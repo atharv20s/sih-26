@@ -910,9 +910,17 @@ class AeroEngine3D {
       const oilP = (tel.oil_pressure && tel.oil_pressure > 0) ? tel.oil_pressure : 110.0;
       const oilTemp = tel.oil_temp || 96.4;
       const fuelFlow = tel.fuel_flow || 8.30;
-      const alt = tel.altitude !== undefined ? tel.altitude : 12500;
-      const ambTemp = tel.ambient_temp !== undefined ? tel.ambient_temp : 15.0;
-      const coolingFactor = tel.cooling_factor !== undefined ? tel.cooling_factor : 1.0;
+      if (tel.altitude !== undefined) this.altitude = tel.altitude;
+      else if (data.environment && data.environment.altitude !== undefined) this.altitude = data.environment.altitude;
+      const alt = this.altitude !== undefined ? this.altitude : 12500;
+
+      if (tel.ambient_temp !== undefined) this.ambientTemp = tel.ambient_temp;
+      else if (data.environment && data.environment.ambient_temp !== undefined) this.ambientTemp = data.environment.ambient_temp;
+      const ambTemp = this.ambientTemp !== undefined ? this.ambientTemp : 15.0;
+
+      if (tel.cooling_factor !== undefined) this.coolingFactor = tel.cooling_factor;
+      else if (data.environment && data.environment.cooling_factor !== undefined) this.coolingFactor = data.environment.cooling_factor;
+      const coolingFactor = this.coolingFactor !== undefined ? this.coolingFactor : 1.0;
 
       if (this.thermalUniforms) {
         this.thermalUniforms.uCht.value = this.cht;

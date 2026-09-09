@@ -108,6 +108,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const valAltitude = document.getElementById('val-altitude');
   const envDensity = document.getElementById('env-density');
   const envPressure = document.getElementById('env-pressure');
+  const chipAlt = document.getElementById('chip-alt');
+  const chipAmb = document.getElementById('chip-amb');
+  const chipDensity = document.getElementById('chip-density');
 
   const sliderAmbientTemp = document.getElementById('slider-ambient-temp');
   const valAmbientTemp = document.getElementById('val-ambient-temp');
@@ -136,45 +139,80 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // -------------------------------------------------------------------------
-  // Subassembly Health Matrix Controller (High-Contrast Real-Time Cards)
+  // Subassembly Health Matrix Controller (Smoothed, Calm & Highly Legible)
   // -------------------------------------------------------------------------
-  function updateSubassemblyHealth(healthData, telemetry) {
+  const subassemblyState = {
+    cylinder_head: { currentPct: 100, currentMetric: 148.6, cond: 'NOMINAL' },
+    crankshaft: { currentPct: 91, currentMetric: 1.41, cond: 'ELEVATED WEAR' },
+    lubrication_system: { currentPct: 91, currentMetric: 281.8, cond: 'NOMINAL' },
+    exhaust_manifold: { currentPct: 91, currentMetric: 667.7, cond: 'NOMINAL' },
+  };
+  let lastSubassemblyUiTime = 0;
+
+  function updateSubassemblyHealth(healthData, telemetry, forceImmediate = false) {
     if (!healthData) return;
+    const now = performance.now();
+
+    // Human-readable throttling: rate-limit text DOM updates to ~2.5 Hz (every 380ms)
+    // to keep numbers calm, steady, and readable, unless forced by fault or slider
+    const shouldUpdateDom = forceImmediate || (now - lastSubassemblyUiTime >= 380);
 
     const components = [
       {
         id: 'cylinder_head',
-        metric: `${(telemetry && telemetry.cht !== undefined && !isNaN(telemetry.cht) ? telemetry.cht : 148.6).toFixed(1)}°C CHT`,
+        rawVal: healthData.cylinder_head !== undefined ? healthData.cylinder_head : 0.95,
+        rawMetric: (telemetry && telemetry.cht !== undefined && !isNaN(telemetry.cht) ? telemetry.cht : 148.6),
+        formatMetric: (v) => `${v.toFixed(1)}°C CHT`,
       },
       {
         id: 'crankshaft',
-        metric: `${(telemetry && telemetry.vibration_rms !== undefined && !isNaN(telemetry.vibration_rms) ? telemetry.vibration_rms : 1.41).toFixed(2)} g VIB`,
+        rawVal: healthData.crankshaft !== undefined ? healthData.crankshaft : 0.91,
+        rawMetric: (telemetry && telemetry.vibration_rms !== undefined && !isNaN(telemetry.vibration_rms) ? telemetry.vibration_rms : 1.41),
+        formatMetric: (v) => `${v.toFixed(2)} g VIB`,
       },
       {
         id: 'lubrication_system',
-        metric: `${(telemetry && telemetry.oil_pressure !== undefined && !isNaN(telemetry.oil_pressure) && telemetry.oil_pressure > 0 ? telemetry.oil_pressure : 281.8).toFixed(1)} kPa`,
+        rawVal: healthData.lubrication_system !== undefined ? healthData.lubrication_system : 0.91,
+        rawMetric: (telemetry && telemetry.oil_pressure !== undefined && !isNaN(telemetry.oil_pressure) && telemetry.oil_pressure > 0 ? telemetry.oil_pressure : 281.8),
+        formatMetric: (v) => `${v.toFixed(1)} kPa`,
       },
       {
         id: 'exhaust_manifold',
-        metric: `${(telemetry && telemetry.egt !== undefined && !isNaN(telemetry.egt) ? telemetry.egt : 667.7).toFixed(1)}°C EGT`,
+        rawVal: healthData.exhaust_manifold !== undefined ? healthData.exhaust_manifold : 0.91,
+        rawMetric: (telemetry && telemetry.egt !== undefined && !isNaN(telemetry.egt) ? telemetry.egt : 667.7),
+        formatMetric: (v) => `${v.toFixed(1)}°C EGT`,
       }
     ];
 
     components.forEach(comp => {
-      const hVal = healthData[comp.id] !== undefined ? healthData[comp.id] : 0.91;
-      const pct = Math.max(0, Math.min(100, Math.round(hVal * 100)));
+      const st = subassemblyState[comp.id];
+      if (!st) return;
 
+      const targetPct = Math.max(0, Math.min(100, Math.round(comp.rawVal * 100)));
+
+      // Smooth numeric percentage and metric value calmly
+      if (forceImmediate) {
+        st.currentPct = targetPct;
+        st.currentMetric = comp.rawMetric;
+      } else {
+        st.currentPct = st.currentPct * 0.70 + targetPct * 0.30;
+        st.currentMetric = st.currentMetric * 0.75 + comp.rawMetric * 0.25;
+      }
+
+      if (!shouldUpdateDom) return;
+
+      const displayPct = Math.round(st.currentPct);
       const statusEl = document.getElementById(`comp-status-${comp.id}`);
       const barEl = document.getElementById(`comp-bar-${comp.id}`);
       const metricEl = document.getElementById(`comp-metric-${comp.id}`);
       const condEl = document.getElementById(`comp-cond-${comp.id}`);
 
-      if (statusEl) {
-        statusEl.textContent = `${pct}%`;
-        if (pct >= 80) {
+      if (statusEl && statusEl.textContent !== `${displayPct}%`) {
+        statusEl.textContent = `${displayPct}%`;
+        if (displayPct >= 80) {
           statusEl.style.color = '#34d399';
           statusEl.style.textShadow = '0 0 10px rgba(52, 211, 153, 0.45)';
-        } else if (pct >= 55) {
+        } else if (displayPct >= 55) {
           statusEl.style.color = '#fbbf24';
           statusEl.style.textShadow = '0 0 10px rgba(251, 191, 36, 0.45)';
         } else {
@@ -184,35 +222,51 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (barEl) {
-        barEl.style.width = `${pct}%`;
+        barEl.style.width = `${displayPct}%`;
         barEl.classList.remove('warning', 'critical');
-        if (pct < 55) {
+        if (displayPct < 55) {
           barEl.classList.add('critical');
-        } else if (pct < 80) {
+        } else if (displayPct < 80) {
           barEl.classList.add('warning');
         }
       }
 
       if (metricEl) {
-        metricEl.textContent = comp.metric;
+        const metricStr = comp.formatMetric(st.currentMetric);
+        if (metricEl.textContent !== metricStr) {
+          metricEl.textContent = metricStr;
+        }
       }
 
       if (condEl) {
-        condEl.classList.remove('warning', 'critical');
-        if (pct >= 85) {
-          condEl.textContent = 'NOMINAL';
-        } else if (pct >= 70) {
-          condEl.textContent = 'DEGRADED';
-          condEl.classList.add('warning');
-        } else if (pct >= 50) {
-          condEl.textContent = 'ELEVATED WEAR';
-          condEl.classList.add('warning');
-        } else {
-          condEl.textContent = 'CRITICAL';
-          condEl.classList.add('critical');
+        // Hysteresis on condition pill to prevent annoying flickering
+        let newCond = st.cond;
+        if (displayPct >= 85) {
+          newCond = 'NOMINAL';
+        } else if (displayPct < 50) {
+          newCond = 'CRITICAL';
+        } else if (displayPct < 70) {
+          newCond = 'ELEVATED WEAR';
+        } else if (displayPct < 82) {
+          newCond = 'DEGRADED';
+        }
+
+        if (st.cond !== newCond || condEl.textContent !== newCond) {
+          st.cond = newCond;
+          condEl.textContent = newCond;
+          condEl.classList.remove('warning', 'critical');
+          if (newCond === 'CRITICAL') {
+            condEl.classList.add('critical');
+          } else if (newCond === 'ELEVATED WEAR' || newCond === 'DEGRADED') {
+            condEl.classList.add('warning');
+          }
         }
       }
     });
+
+    if (shouldUpdateDom) {
+      lastSubassemblyUiTime = now;
+    }
   }
 
   let envDebounceTimer = null;
@@ -227,9 +281,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const airDensity = (1.225 * densityRatio).toFixed(3);
     const pressureInHg = (29.92 * Math.pow(Math.max(0.01, 1 - 6.8756e-6 * altFt), 5.2559)).toFixed(2);
 
-    valAltitude.textContent = `${altFt.toLocaleString()} ft`;
+    valAltitude.textContent = `${Math.round(altFt).toLocaleString()} ft`;
     envDensity.textContent = `Air Density: ${airDensity} kg/m³`;
     envPressure.textContent = `Pressure: ${pressureInHg} inHg`;
+
+    if (chipAlt) chipAlt.textContent = `${Math.round(altFt).toLocaleString()} FT`;
+    if (chipAmb) chipAmb.textContent = `${ambC > 0 ? '+' : ''}${ambC.toFixed(1)}°C`;
+    if (chipDensity) chipDensity.textContent = `${airDensity} kg/m³`;
 
     valAmbientTemp.textContent = `${ambC > 0 ? '+' : ''}${ambC.toFixed(1)} °C`;
     const coolingFactor = Math.max(0.35, (1.0 + (15.0 - ambC) * 0.012) * Math.sqrt(densityRatio)).toFixed(2);
@@ -266,7 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateGauge('oil_pressure', estOilP);
     updateGauge('fuel_flow', estFuelFlow);
 
-    // 3. Immediately calculate and update Subassembly Health
+    // 3. Immediately calculate and update Subassembly Health (forced immediate for smooth slider responsiveness)
     const cylHealth = Math.max(0.05, Math.min(1.0, 1.0 - Math.max(0.0, estCht - 150.0) / 65.0));
     const crankHealth = Math.max(0.10, Math.min(1.0, 1.0 - Math.max(0.0, estVib - 1.2) / 2.3));
     const lubeHealth = Math.max(0.10, Math.min(1.0, (estOilP - 130.0) / 180.0));
@@ -283,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
       vibration_rms: estVib,
       oil_temp: estOilTemp,
       oil_pressure: estOilP,
-    });
+    }, true);
 
     // 4. Send environment update to server backend (debounced 50ms)
     clearTimeout(envDebounceTimer);
@@ -316,9 +374,52 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
+    // Dynamic altitude progression throughout mission profile
+    let replayAlt = 12500;
+    if (replaySeconds < 300) {
+      // Taxi (0 to 500 ft runway elevation)
+      replayAlt = Math.round((replaySeconds / 300) * 500);
+    } else if (replaySeconds < 1500) {
+      // Climb (500 ft to 12,500 ft cruise)
+      replayAlt = Math.round(500 + ((replaySeconds - 300) / 1200) * 12000);
+    } else if (replaySeconds >= 4200 && replaySeconds < 5100) {
+      // Thermal Spike (High altitude dash: 15,500 ft)
+      replayAlt = 15500;
+    } else if (replaySeconds >= 5100 && replaySeconds < 5800) {
+      // DRL De-rate (Descend to dense air cooling: 10,000 ft)
+      replayAlt = 10000;
+    } else if (replaySeconds >= 5800) {
+      // RTB Descent & Touchdown (10,000 ft down to 0 ft)
+      replayAlt = Math.max(0, Math.round(10000 - ((replaySeconds - 5800) / 500) * 10000));
+    }
+
+    if (sliderAltitude) sliderAltitude.value = replayAlt;
+    if (valAltitude) valAltitude.textContent = `${replayAlt.toLocaleString()} ft`;
+    if (chipAlt) chipAlt.textContent = `${replayAlt.toLocaleString()} FT`;
+
+    const densityRatio = Math.pow(Math.max(0.01, 1 - 2.25577e-5 * replayAlt), 4.25588);
+    const airDensity = (1.225 * densityRatio).toFixed(3);
+    const pressureInHg = (29.92 * Math.pow(Math.max(0.01, 1 - 6.8756e-6 * replayAlt), 5.2559)).toFixed(2);
+    if (envDensity) envDensity.textContent = `Air Density: ${airDensity} kg/m³`;
+    if (envPressure) envPressure.textContent = `Pressure: ${pressureInHg} inHg`;
+    if (chipDensity) chipDensity.textContent = `${airDensity} kg/m³`;
+
     // Replay telemetry based on mission profile phase
     let simData = {
-      telemetry: { rpm: 4800, cht: 148.9, egt: 666.1, oil_pressure: 320, oil_temp: 85, vibration_rms: 1.2, fuel_flow: 9.5, afr: 13.8 },
+      telemetry: {
+        rpm: 4800,
+        cht: 148.9,
+        egt: 666.1,
+        oil_pressure: 320,
+        oil_temp: 85,
+        vibration_rms: 1.2,
+        fuel_flow: 9.5,
+        afr: 13.8,
+        altitude: replayAlt,
+        ambient_temp: 15.0,
+        air_density: parseFloat(airDensity),
+        cooling_factor: 1.0,
+      },
       rul_cycles: 380,
       adjusted_rul: 380,
       fault_archetype: 'nominal',
@@ -377,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
       crankshaft: crankHealth,
       lubrication_system: lubeHealth,
       exhaust_manifold: exhaustHealth,
-    }, simData.telemetry);
+    }, simData.telemetry, true);
   }
 
   if (replayTimeline) {
@@ -443,6 +544,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (faultType) {
         btn.classList.add('active');
+        if (faultType === 'thermal_shock') {
+          updateSubassemblyHealth({
+            cylinder_head: 0.0,
+            crankshaft: 0.65,
+            lubrication_system: 0.85,
+            exhaust_manifold: 0.35,
+          }, {
+            cht: 240.0,
+            egt: 840.0,
+            vibration_rms: 3.20,
+            oil_temp: 110.0,
+            oil_pressure: 250.0,
+          }, true);
+        }
+      } else {
+        // Nominal reset
+        updateSubassemblyHealth({
+          cylinder_head: 1.0,
+          crankshaft: 0.91,
+          lubrication_system: 0.91,
+          exhaust_manifold: 0.91,
+        }, {
+          cht: 148.6,
+          egt: 667.7,
+          vibration_rms: 1.41,
+          oil_temp: 96.4,
+          oil_pressure: 281.8,
+        }, true);
       }
 
       try {
@@ -605,10 +734,45 @@ document.addEventListener('DOMContentLoaded', () => {
         // 1. Update 3D viewport
         engine3D.updateTelemetryState(data);
 
-        // 2. Update Gauges
+        // 2. Update Gauges & Atmospheric Flight Telemetry Chips
         if (data.telemetry) {
           for (const [s, val] of Object.entries(data.telemetry)) {
             updateGauge(s, val);
+          }
+
+          // Live Altitude & Environment synchronization
+          const liveAlt = data.telemetry.altitude !== undefined 
+            ? data.telemetry.altitude 
+            : (data.environment && data.environment.altitude !== undefined ? data.environment.altitude : null);
+
+          if (liveAlt !== null && !isNaN(liveAlt)) {
+            const roundAlt = Math.round(liveAlt);
+            if (chipAlt) chipAlt.textContent = `${roundAlt.toLocaleString()} FT`;
+            // Only update slider and input display if user is not actively dragging the slider
+            if (document.activeElement !== sliderAltitude) {
+              if (valAltitude) valAltitude.textContent = `${roundAlt.toLocaleString()} ft`;
+              if (sliderAltitude && Math.abs(parseFloat(sliderAltitude.value) - roundAlt) > 40) {
+                sliderAltitude.value = roundAlt;
+              }
+            }
+          }
+
+          const liveAmb = data.telemetry.ambient_temp !== undefined 
+            ? data.telemetry.ambient_temp 
+            : (data.environment && data.environment.ambient_temp !== undefined ? data.environment.ambient_temp : null);
+          if (liveAmb !== null && chipAmb) {
+            chipAmb.textContent = `${liveAmb > 0 ? '+' : ''}${liveAmb.toFixed(1)}°C`;
+            if (document.activeElement !== sliderAmbientTemp && valAmbientTemp) {
+              valAmbientTemp.textContent = `${liveAmb > 0 ? '+' : ''}${liveAmb.toFixed(1)} °C`;
+            }
+          }
+
+          const liveDensity = data.telemetry.air_density !== undefined 
+            ? data.telemetry.air_density 
+            : (data.environment && data.environment.air_density !== undefined ? data.environment.air_density : null);
+          if (liveDensity !== null) {
+            if (chipDensity) chipDensity.textContent = `${liveDensity} kg/m³`;
+            if (envDensity) envDensity.textContent = `Air Density: ${liveDensity} kg/m³`;
           }
         }
 

@@ -84,6 +84,7 @@ class SimulationController:
         noise = lambda scale: float(np.random.normal(0, scale))
 
         # Dynamic environmental & atmospheric calculations
+        self.altitude = float(np.clip(self.altitude + noise(0.8), 0.0, 25000.0))
         density_ratio = max(0.05, (1.0 - 2.25577e-5 * self.altitude) ** 4.25588)
         self.air_density = round(1.225 * density_ratio, 3)
         self.cooling_factor = round(max(0.35, (1.0 + (15.0 - self.ambient_temp) * 0.012) * np.sqrt(density_ratio)), 2)

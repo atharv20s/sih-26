@@ -84,6 +84,14 @@ class DigitalTwinOrchestrator:
         # Build the LangGraph StateGraph
         self.graph = self._build_graph()
 
+        # Smoothed health state tracking for readable, calm indicators
+        self._smoothed_health = {
+            "cylinder_head": 1.0,
+            "crankshaft": 0.91,
+            "lubrication_system": 0.91,
+            "exhaust_manifold": 0.91,
+        }
+
     # --------------------------------------------------------------------- #
     # Tool 3: Sensor Auditor Node                                           #
     # --------------------------------------------------------------------- #
@@ -122,6 +130,11 @@ class DigitalTwinOrchestrator:
                 imputed_fields[sensor] = float(fallback)
             else:
                 audited[sensor] = float(val)
+
+        # Preserve environmental and atmospheric telemetry
+        for env_key in ("altitude", "ambient_temp", "air_density", "cooling_factor"):
+            if env_key in raw and raw[env_key] is not None:
+                audited[env_key] = float(raw[env_key])
 
         self_corrected = len(corrupted_fields) > 0
         correction_count = state.get("self_correction_count", 0) + (1 if self_corrected else 0)
@@ -366,14 +379,28 @@ class DigitalTwinOrchestrator:
         oil_p = audited.get("oil_pressure", 320.0)
         egt = audited.get("egt", 650.0)
 
-        cyl_health = max(0.0, min(1.0, 1.0 - max(0.0, cht - 150.0) / 60.0))
-        crank_health = max(0.0, min(1.0, 1.0 - max(0.0, vib - 1.2) / 2.3))
-        lube_health = max(0.0, min(1.0, (oil_p - 150.0) / 180.0))
-        exhaust_health = max(0.0, min(1.0, 1.0 - max(0.0, egt - 650.0) / 200.0))
+        raw_cyl = max(0.0, min(1.0, 1.0 - max(0.0, cht - 150.0) / 60.0))
+        raw_crank = max(0.0, min(1.0, 1.0 - max(0.0, vib - 1.2) / 2.3))
+        raw_lube = max(0.0, min(1.0, (oil_p - 150.0) / 180.0))
+        raw_exhaust = max(0.0, min(1.0, 1.0 - max(0.0, egt - 650.0) / 200.0))
+
+        # Adaptive EMA smoothing: calm stability under nominal cruise, responsive under active faults
+        is_fault = (cht > 195.0 or vib > 2.8 or oil_p < 200.0 or egt > 760.0)
+        alpha = 0.18 if is_fault else 0.05
+        self._smoothed_health["cylinder_head"] = (1.0 - alpha) * self._smoothed_health["cylinder_head"] + alpha * raw_cyl
+        self._smoothed_health["crankshaft"] = (1.0 - alpha) * self._smoothed_health["crankshaft"] + alpha * raw_crank
+        self._smoothed_health["lubrication_system"] = (1.0 - alpha) * self._smoothed_health["lubrication_system"] + alpha * raw_lube
+        self._smoothed_health["exhaust_manifold"] = (1.0 - alpha) * self._smoothed_health["exhaust_manifold"] + alpha * raw_exhaust
 
         dispatch_payload = {
             "cycle": state.get("cycle", 0),
             "telemetry": audited,
+            "environment": {
+                "altitude": audited.get("altitude", 12500.0),
+                "ambient_temp": audited.get("ambient_temp", 15.0),
+                "air_density": audited.get("air_density", 0.812),
+                "cooling_factor": audited.get("cooling_factor", 1.0),
+            },
             "rul_cycles": pinn.get("predicted_rul", 250.0),
             "adjusted_rul": drl.get("adjusted_rul", pinn.get("predicted_rul", 250.0)),
             "extension_cycles": drl.get("projected_extension_cycles", 0.0),
@@ -397,10 +424,10 @@ class DigitalTwinOrchestrator:
                 "total_corrections": state.get("self_correction_count", 0),
             },
             "component_health": {
-                "cylinder_head": round(cyl_health, 3),
-                "crankshaft": round(crank_health, 3),
-                "lubrication_system": round(lube_health, 3),
-                "exhaust_manifold": round(exhaust_health, 3),
+                "cylinder_head": round(self._smoothed_health["cylinder_head"], 3),
+                "crankshaft": round(self._smoothed_health["crankshaft"], 3),
+                "lubrication_system": round(self._smoothed_health["lubrication_system"], 3),
+                "exhaust_manifold": round(self._smoothed_health["exhaust_manifold"], 3),
             },
             "thermal_heatmap": {
                 "cht_celsius": cht,

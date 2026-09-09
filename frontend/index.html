@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SIH26054 — Aero Engine Digital Twin (PINN + DRL + LangGraph)</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909_08">
+  <link rel="stylesheet" href="/static/styles.css?v=20260909_09">
   <!-- Three.js and OrbitControls from CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -44,6 +44,22 @@
         <div class="panel-title">
           <span>Aero Sensors Telemetry</span>
           <span class="panel-badge">10 Hz LIVE</span>
+        </div>
+
+        <!-- Atmospheric Flight Telemetry Strip -->
+        <div class="telemetry-env-strip">
+          <div class="env-strip-chip">
+            <span class="chip-label">✈️ ALTITUDE</span>
+            <span class="chip-val" id="chip-alt">12,500 FT</span>
+          </div>
+          <div class="env-strip-chip">
+            <span class="chip-label">🌡️ AMBIENT</span>
+            <span class="chip-val" id="chip-amb">+15.0°C</span>
+          </div>
+          <div class="env-strip-chip">
+            <span class="chip-label">💨 DENSITY</span>
+            <span class="chip-val" id="chip-density">0.812 kg/m³</span>
+          </div>
         </div>
 
         <div class="gauge-grid">
@@ -736,7 +752,7 @@
     </div>
   </div>
 
-  <script src="/static/engine_3d.js?v=20260909_08"></script>
-  <script src="/static/app.js?v=20260909_08"></script>
+  <script src="/static/engine_3d.js?v=20260909_09"></script>
+  <script src="/static/app.js?v=20260909_09"></script>
 </body>
 </html>
