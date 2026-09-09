@@ -81,6 +81,14 @@ class DigitalTwinOrchestrator:
             self.norm_min = np.zeros(12)
             self.norm_max = np.ones(12)
 
+        # Health smoothing memory
+        self._smoothed_health = {
+            "cylinder_head": 1.0,
+            "crankshaft": 0.91,
+            "lubrication_system": 0.91,
+            "exhaust_manifold": 0.91,
+        }
+
         # Build the LangGraph StateGraph
         self.graph = self._build_graph()
 
