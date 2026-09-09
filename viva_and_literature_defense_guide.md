@@ -130,6 +130,184 @@ Your project stands on the shoulders of 4 foundational paradigms. You must be ab
                 +-------------------------------------------------------------+
 ```
 
+### Improved Mermaid Orchestrator Routing DAG (No Truncation)
+```mermaid
+graph TD
+    %% Global Styling
+    classDef blueBox fill:#161b22,stroke:#388bfd,stroke-width:1.5px,color:#f0f6fc;
+    classDef purpleBox fill:#1e1a2e,stroke:#a371f7,stroke-width:1.5px,color:#f0f6fc;
+    classDef greenBox fill:#13231b,stroke:#3fb950,stroke-width:1.5px,color:#f0f6fc;
+    classDef amberBox fill:#271d13,stroke:#d29922,stroke-width:1.5px,color:#f0f6fc;
+    classDef redBox fill:#2c1517,stroke:#f85149,stroke-width:1.5px,color:#f0f6fc;
+    classDef decision fill:#0d1117,stroke:#58a6ff,stroke-width:2px,color:#f0f6fc;
+
+    subgraph S1 ["1. SENSOR INGESTION & AUDIT"]
+        A["100 Hz Telemetry Frame<br/>RPM • CHT 1-4 • EGT<br/>Oil P/T • Vib • MAP • AFR"]:::blueBox
+        B["LangGraph Router<br/>Agentic State Coordinator"]:::blueBox
+        C["Tool 3: Sensor Auditor<br/>Timestamp & Plausibility Check<br/>Stuck & Null Detection"]:::purpleBox
+        C1["Self-Healing Imputation<br/>Cross-Sensor Regression<br/>77.4% Edge Auto-Recovery"]:::greenBox
+    end
+
+    subgraph S2 ["2. PARALLEL AI INFERENCE ENGINES"]
+        D["Tool 1: PINN Guardian<br/>Fourier Heat Conduction<br/>Physical Gradient dT/dt"]:::blueBox
+        D1{"Thermodynamic Check<br/>Residual ≤ 5.0°C?"}:::decision
+        D2["Prune Hypothesis<br/>Flag Sensor Transient"]:::redBox
+
+        E["4-Class Fault Classifier<br/>Thermal • Bearing<br/>Lubrication • Valve"]:::amberBox
+        G["Tool 2: DRL Strategist<br/>Continuous RUL Calculation<br/>Throttle & Mixture Trim"]:::amberBox
+        H{"PINN Safety Shield<br/>CHT ≤ 210°C & Vib ≤ 3.5g?"}:::decision
+        H1["Safety Clamp Override<br/>Enrich AFR & De-rate"]:::redBox
+    end
+
+    subgraph S3 ["3. STATE SYNC & ACTUATION"]
+        F["State Synchronization<br/>Cryptographic Token Lock<br/>Health Matrix Synthesis"]:::greenBox
+        I["Hyperledger Fabric<br/>Tamper-Proof Audit Trail<br/>Immutable Exceedance Log"]:::purpleBox
+        J["3D WebGL Digital Twin<br/>10 Hz WebSocket Stream<br/>Volumetric Heatmap"]:::blueBox
+        K["STANAG 4586 Uplink<br/>Closed-Loop Autopilot Trim<br/>Autonomous De-rate Packet"]:::greenBox
+    end
+
+    %% Routing Flow
+    A --> B
+    B -->|Sensor Audit| C
+    C -->|Corrupt/NaN| C1
+    C1 -->|Sanitized Frame| F
+    C -->|Nominal Frame| F
+
+    B -->|Physics Check| D
+    D -->|dT/dt Gradient| D1
+    D1 -->|Residual > 5°C| D2
+    D2 --> F
+    D1 -->|Physically Valid| F
+
+    B -->|Root-Cause Diag| E
+    E -->|Archetype Vector| G
+    G -->|Candidate Action| H
+    H -->|Breaches Limit| H1
+    H1 --> F
+    H -->|Safe Corridor| F
+
+    F --> I
+    F --> J
+    J --> K
+```
+
+### Complete Database & Telemetry ERD Script (Mermaid erDiagram)
+```mermaid
+erDiagram
+    UAV_FLEET ||--o{ FLIGHT_MISSIONS : operates
+    UAV_FLEET ||--o{ ENGINE_SUBASSEMBLIES : houses
+    USERS_RBAC ||--o{ FLIGHT_MISSIONS : pilots
+    FLIGHT_MISSIONS ||--o{ TELEMETRY_HYPERTABLE : streams
+    FLIGHT_MISSIONS ||--o{ SENSOR_AUDIT_LOGS : logs
+    FLIGHT_MISSIONS ||--o{ PINN_RESIDUAL_LOGS : evaluates
+    FLIGHT_MISSIONS ||--o{ FAULT_INCIDENTS : detects
+    ENGINE_SUBASSEMBLIES ||--o{ FAULT_INCIDENTS : locates
+    FAULT_INCIDENTS ||--o{ DRL_ACTUATION_LOGS : triggers
+    DRL_ACTUATION_LOGS ||--|| BLOCKCHAIN_ANCHORS : commits
+
+    UAV_FLEET {
+        varchar tail_number PK "e.g. TAPAS-014"
+        varchar model "TAPAS-BH-201 MALE"
+        varchar engine_type "Rotax 914 F Boxer"
+        int tbo_limit_hours "Target TBO 1200 hrs"
+        varchar fleet_status "ACTIVE, STANDBY, DEGRADED"
+        date commissioned_date "Commissioning Date"
+    }
+
+    USERS_RBAC {
+        uuid user_id PK "Unique Operator ID"
+        varchar callsign "e.g. Eagle-1"
+        varchar role "COMMANDER, PILOT, ENGINEER"
+        varchar argon2_hash "Password Hash"
+        int clearance_lvl "Security Level 1-5"
+    }
+
+    FLIGHT_MISSIONS {
+        uuid mission_id PK "Flight Sortie ID"
+        varchar tail_number FK "Airframe Reference"
+        uuid pilot_id FK "Assigned Pilot"
+        timestamptz departure_time "Sortie Launch UTC"
+        varchar mission_type "RECON, SURVEILLANCE, PATROL"
+        varchar mission_status "IN_FLIGHT, RECOVERED, ABORTED"
+    }
+
+    ENGINE_SUBASSEMBLIES {
+        uuid subassembly_id PK "Component UUID"
+        varchar tail_number FK "Installed Aircraft"
+        varchar assembly_name "CYLINDER_HEAD, CRANK, OIL, EXHAUST"
+        float health_score "Normalized Health [0-1]"
+        int accrued_cycles "Mission Cycles Expended"
+        timestamptz last_inspection "Last Depot Check"
+    }
+
+    TELEMETRY_HYPERTABLE {
+        timestamptz time PK "TimescaleDB Chunk Dimension"
+        uuid mission_id PK "Sortie UUID"
+        float rpm "Engine Speed (rev/min)"
+        float cht "Cylinder Head Temp (°C)"
+        float egt "Exhaust Gas Temp (°C)"
+        float oil_pressure "Oil Pressure (kPa)"
+        float oil_temp "Oil Temperature (°C)"
+        float fuel_flow "Fuel Flow (L/h)"
+        float vibration_rms "Vibration RMS (g)"
+        float map_kpa "Manifold Absolute Pressure (kPa)"
+        float afr "Air-Fuel Ratio"
+        float coolant_temp "Coolant Temp (°C)"
+    }
+
+    SENSOR_AUDIT_LOGS {
+        uuid audit_id PK "Verification Token"
+        uuid mission_id FK "Associated Flight"
+        timestamptz timestamp "Detection Timestamp"
+        varchar channel "e.g. CHT_CYL_2"
+        varchar fault_mode "NAN_DROP, STUCK_AT_ZERO, SPIKE"
+        float raw_value "Corrupted Value"
+        float imputed_value "Kalman/Regression Imputed"
+        boolean auto_recovered "77.4% Recovery Flag"
+    }
+
+    PINN_RESIDUAL_LOGS {
+        uuid residual_id PK "Physics Audit ID"
+        uuid mission_id FK "Sortie ID"
+        timestamptz timestamp "Inference Timestamp"
+        float empirical_grad "dCHT/dt Empirical (°C/cyc)"
+        float fourier_expected "Fourier Theoretical Grad"
+        float thermal_residual "Energy Imbalance |diff| (°C)"
+        boolean physically_valid "Residual <= 5.0°C"
+        float predicted_rul "Estimated RUL Cycles"
+    }
+
+    FAULT_INCIDENTS {
+        uuid incident_id PK "Incident ID"
+        uuid mission_id FK "Sortie Reference"
+        uuid subassembly_id FK "Degrading Subassembly"
+        timestamptz detected_at "Detection Timestamp"
+        varchar archetype "VIB_OVER, CHT_OVER, OIL_STARV, EGT_OVER"
+        float confidence "Softmax Probability [0-1]"
+        varchar severity "ADVISORY, WARNING, CRITICAL"
+    }
+
+    DRL_ACTUATION_LOGS {
+        uuid action_id PK "Command Record ID"
+        uuid incident_id FK "Triggering Fault"
+        timestamptz timestamp "Action Timestamp"
+        float delta_throttle "Recommended Throttle Trim"
+        float delta_mixture "Recommended AFR Trim"
+        boolean shield_triggered "PINN Boundary Intervened"
+        float projected_cht "Projected Post-Action CHT"
+        varchar stanag_packet "STANAG 4586 Hex Payload"
+    }
+
+    BLOCKCHAIN_ANCHORS {
+        varchar block_hash PK "SHA-256 Ledger Anchor"
+        uuid action_id FK "Logged Control Event"
+        int block_height "Hyperledger Fabric Block No"
+        timestamptz committed_at "Consensus Commit UTC"
+        varchar previous_hash "Cryptographic Parent Link"
+        text signature "ADE Node Digital Signature"
+    }
+```
+
 ### 1. Physics-Informed Neural Network (PINN) — `src/pinn/pinn_model.py`
 * **Input Window:** Shape `(Batch, 40, 12)` — 40-step sliding temporal window across 12 raw physical sensor channels:
   `[RPM, CHT, EGT, Oil_Temp, Oil_Pressure, Fuel_Flow, Vibration_RMS, MAP, AFR, Torque, Crank_Pos, Coolant_Temp]`
