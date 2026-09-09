@@ -121,3 +121,101 @@ def load_windows(npy_path, meta_path, split="train"):
     meta = pd.read_parquet(meta_path)
     mask = meta["split"] == split
     return X[mask.values], meta.loc[mask.values]
+
+
+def main():
+    import argparse
+    from pathlib import Path
+    from torch.utils.data import TensorDataset, DataLoader
+
+    parser = argparse.ArgumentParser(description="Train 1D-CNN baseline RUL model")
+    parser.add_argument("--epochs", type=int, default=20, help="Number of training epochs")
+    parser.add_argument("--batch", type=int, default=256, help="Batch size")
+    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu", help="Device (cpu or cuda)")
+    parser.add_argument("--log-every", type=int, default=5, help="Logging frequency")
+    args = parser.parse_args()
+
+    root = Path(__file__).resolve().parents[2]
+    data_dir = root / "data" / "processed"
+    npy_path = data_dir / "X_windows.npy"
+    meta_path = data_dir / "meta_windows.parquet"
+
+    print("=" * 68)
+    print(" 1D-CNN Baseline RUL Regressor (Shen et al., Machines 2025)")
+    print(f" Device: {args.device} | Epochs: {args.epochs} | Batch Size: {args.batch}")
+    print("=" * 68)
+
+    if not npy_path.exists() or not meta_path.exists():
+        print(f"Error: Dataset not found at {data_dir}.")
+        print("Run `python src/data/build_dataset.py` first to generate telemetry windows.")
+        return
+
+    import pandas as pd
+    print(f"[*] Loading data from: {data_dir}")
+    X = np.load(npy_path)
+    meta = pd.read_parquet(meta_path)
+
+    RUL_CAP = 500.0
+    y = np.clip(meta["rul"].values.astype(np.float32), 0.0, RUL_CAP) / RUL_CAP
+
+    train_m = (meta["split"] == "train").values
+    val_m = (meta["split"] == "val").values
+    test_m = (meta["split"] == "test").values
+
+    print(f"[*] Splits: Train={train_m.sum()} | Val={val_m.sum()} | Test={test_m.sum()}")
+
+    def build_loader():
+        train_ds = TensorDataset(
+            torch.from_numpy(X[train_m]).float(),
+            torch.from_numpy(y[train_m]).float().unsqueeze(-1),
+        )
+        val_ds = TensorDataset(
+            torch.from_numpy(X[val_m]).float(),
+            torch.from_numpy(y[val_m]).float().unsqueeze(-1),
+        )
+        train_ld = DataLoader(train_ds, batch_size=args.batch, shuffle=True)
+        val_ld = DataLoader(val_ds, batch_size=args.batch, shuffle=False)
+        return train_ld, val_ld
+
+    in_features = X.shape[-1]
+    model = CNN1DModel(in_features=in_features, hidden=64).to(args.device)
+
+    print(f"[*] Model initialized: in_features={in_features} (PCA), hidden=64")
+    print("[*] Starting training loop...")
+    model, history = train_cnn(
+        build_loader,
+        model,
+        epochs=args.epochs,
+        lr=args.lr,
+        device=args.device,
+        log_every=args.log_every,
+    )
+
+    # Evaluate on held-out test split
+    test_ds = TensorDataset(
+        torch.from_numpy(X[test_m]).float(),
+        torch.from_numpy(y[test_m]).float().unsqueeze(-1),
+    )
+    test_ld = DataLoader(test_ds, batch_size=args.batch, shuffle=False)
+
+    model.eval()
+    preds, truths = [], []
+    with torch.no_grad():
+        for xb, yb in test_ld:
+            xb = xb.to(args.device)
+            preds.append(model(xb).cpu().numpy().ravel())
+            truths.append(yb.numpy().ravel())
+
+    preds = np.concatenate(preds) * RUL_CAP
+    truths = np.concatenate(truths) * RUL_CAP
+    test_mae = float(np.mean(np.abs(preds - truths)))
+    test_rmse = float(np.sqrt(np.mean((preds - truths) ** 2)))
+
+    print("-" * 68)
+    print(f"[+] Final Test Evaluation: MAE = {test_mae:.2f} cycles | RMSE = {test_rmse:.2f} cycles")
+    print("=" * 68)
+
+
+if __name__ == "__main__":
+    main()
