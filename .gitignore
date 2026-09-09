@@ -1,0 +1,21 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Large binary data files (>100MB exceeds GitHub push limit)
+*.npy
+*.parquet
+data/processed/
+data/raw/
+_extracted/
+
+# Local configuration and logs
+.claude/
+*.log
+.system_generated/
