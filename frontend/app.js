@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const explodedSlider = document.getElementById('exploded-slider');
   const explodedVal = document.getElementById('exploded-val');
   const btnHeatmap = document.getElementById('btn-heatmap');
+  const btnZoomIn = document.getElementById('btn-zoom-in');
+  const btnZoomOut = document.getElementById('btn-zoom-out');
   const btnResetView = document.getElementById('btn-reset-view');
 
   const rulNumber = document.getElementById('rul-number');
@@ -61,6 +63,18 @@ document.addEventListener('DOMContentLoaded', () => {
     btnHeatmap.addEventListener('click', () => {
       const active = engine3D.toggleHeatmap();
       btnHeatmap.classList.toggle('active', active);
+    });
+  }
+
+  // Zoom In / Out Buttons
+  if (btnZoomIn) {
+    btnZoomIn.addEventListener('click', () => {
+      engine3D.zoomIn(0.25);
+    });
+  }
+  if (btnZoomOut) {
+    btnZoomOut.addEventListener('click', () => {
+      engine3D.zoomOut(0.25);
     });
   }
 

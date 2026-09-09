@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -328,8 +328,39 @@ if FRONTEND_DIR.exists():
     async def index():
         index_file = FRONTEND_DIR / "index.html"
         if index_file.exists():
-            return HTMLResponse(content=index_file.read_text(encoding="utf-8"))
+            return HTMLResponse(
+                content=index_file.read_text(encoding="utf-8"),
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
         return HTMLResponse("<h3>Dashboard frontend directory found, index.html not found.</h3>")
+
+    @app.get("/{file_name:path}")
+    async def serve_static_root(file_name: str):
+        target = (FRONTEND_DIR / file_name).resolve()
+        if FRONTEND_DIR in target.parents and target.exists() and target.is_file():
+            media_type = None
+            if file_name.endswith(".css"):
+                media_type = "text/css"
+            elif file_name.endswith(".js"):
+                media_type = "application/javascript"
+            elif file_name.endswith(".png"):
+                media_type = "image/png"
+            elif file_name.endswith(".jpg") or file_name.endswith(".jpeg"):
+                media_type = "image/jpeg"
+            return FileResponse(
+                target,
+                media_type=media_type,
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
+        return JSONResponse(status_code=404, content={"detail": "File not found"})
 
 
 if __name__ == "__main__":

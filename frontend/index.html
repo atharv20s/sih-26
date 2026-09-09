@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SIH26054 — Aero Engine Digital Twin (PINN + DRL + LangGraph)</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=20260909_07">
   <!-- Three.js and OrbitControls from CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -176,6 +176,8 @@
               <span id="exploded-val" class="pc-val">0%</span>
             </div>
             <button class="pc-btn active" id="btn-heatmap">GLSL HEATMAP</button>
+            <button class="pc-btn pc-zoom-btn" id="btn-zoom-in" title="Zoom In Camera (or scroll wheel)">➕ ZOOM IN</button>
+            <button class="pc-btn pc-zoom-btn" id="btn-zoom-out" title="Zoom Out Camera (or scroll wheel)">➖ ZOOM OUT</button>
             <button class="pc-btn" id="btn-reset-view">RESET CAMERA</button>
           </div>
         </div>
@@ -254,12 +256,12 @@
                 <div class="scrubber-time-row">
                   <span id="scrubber-current-time">00:42:15</span>
                   <div class="mission-phases">
-                    <span class="phase-pill" data-time="300">Taxi (5m)</span>
-                    <span class="phase-pill" data-time="1500">Climb (25m)</span>
-                    <span class="phase-pill active" data-time="2520">Cruise (42m)</span>
-                    <span class="phase-pill alert" data-time="4500">Thermal Spike (75m)</span>
-                    <span class="phase-pill green" data-time="5400">DRL De-Rate (90m)</span>
-                    <span class="phase-pill" data-time="6300">RTB Touchdown</span>
+                    <span class="phase-pill" data-time="300">Taxi</span>
+                    <span class="phase-pill" data-time="1500">Climb</span>
+                    <span class="phase-pill active" data-time="2520">Cruise</span>
+                    <span class="phase-pill alert" data-time="4500">Thermal Spike</span>
+                    <span class="phase-pill green" data-time="5400">DRL De-Rate</span>
+                    <span class="phase-pill" data-time="6300">RTB</span>
                   </div>
                   <span>01:45:00</span>
                 </div>
@@ -300,18 +302,18 @@
           <span class="rul-extension-tag" id="rul-extension">+15.0 cyc (DRL Protected)</span>
         </div>
 
-        <div style="margin-top: 10px;">
+        <div class="ai-detail-group">
           <div class="ai-detail-row">
-            <span class="ai-detail-label">Fourier Energy Residual:</span>
+            <span class="ai-detail-label">Fourier Energy Residual</span>
             <span class="ai-detail-val" id="fourier-residual">0.239 °C</span>
           </div>
           <div class="ai-detail-row">
-            <span class="ai-detail-label">Physical Thermal Gradient (dT/dt):</span>
+            <span class="ai-detail-label">Thermal Gradient (dT/dt)</span>
             <span class="ai-detail-val" id="physical-gradient">0.018 °C/cyc</span>
           </div>
           <div class="ai-detail-row">
-            <span class="ai-detail-label">Thermodynamic Law Status:</span>
-            <span class="ai-detail-val" id="fourier-adherence" style="color:var(--accent-emerald);">100% COMPLIANT</span>
+            <span class="ai-detail-label">Thermodynamic Law Status</span>
+            <span class="ai-detail-val status-badge-ok" id="fourier-adherence">100% COMPLIANT</span>
           </div>
         </div>
       </div>
@@ -322,33 +324,37 @@
           <span>Fault Archetype Classifier</span>
           <span class="panel-badge" id="fault-conf">100% CONF</span>
         </div>
-        <div style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 6px;" id="fault-name">OIL STARVATION</div>
+        <div class="fault-active-banner">
+          <span class="fault-active-dot"></span>
+          <span class="fault-active-label">DETECTED:</span>
+          <span class="fault-active-name" id="fault-name">OIL STARVATION</span>
+        </div>
 
         <div class="fault-meter-list">
           <div class="fault-meter-row">
             <div class="fault-meter-header">
-              <span class="fault-tag">Cylinder Head Overheat (CHT)</span>
+              <span class="fault-tag">CHT Overheat</span>
               <span class="fault-pct" id="fault-pct-cht_over">0%</span>
             </div>
             <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-cht_over" style="width: 0%; background: var(--accent-amber);"></div></div>
           </div>
           <div class="fault-meter-row">
             <div class="fault-meter-header">
-              <span class="fault-tag">Bearing Vibration Fatigue</span>
+              <span class="fault-tag">Vibration Fatigue</span>
               <span class="fault-pct" id="fault-pct-vibration_over">0%</span>
             </div>
             <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-vibration_over" style="width: 0%; background: var(--accent-rose);"></div></div>
           </div>
           <div class="fault-meter-row">
             <div class="fault-meter-header">
-              <span class="fault-tag">Oil Starvation Cavitation</span>
+              <span class="fault-tag">Oil Starvation</span>
               <span class="fault-pct" id="fault-pct-oil_starvation">100%</span>
             </div>
             <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-oil_starvation" style="width: 100%; background: #c084fc; box-shadow: 0 0 10px #c084fc;"></div></div>
           </div>
           <div class="fault-meter-row">
             <div class="fault-meter-header">
-              <span class="fault-tag">Exhaust Thermal Surge (EGT)</span>
+              <span class="fault-tag">EGT Surge</span>
               <span class="fault-pct" id="fault-pct-egt_over">0%</span>
             </div>
             <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-egt_over" style="width: 0%; background: #f97316;"></div></div>
@@ -381,13 +387,15 @@
           <span>Sensor Auditor (LangGraph)</span>
           <span class="panel-badge">TOOL 3</span>
         </div>
-        <div class="ai-detail-row">
-          <span class="ai-detail-label">Payload Sanitization:</span>
-          <span class="ai-detail-val" style="color:var(--accent-emerald);">ZERO SILENT DROPS</span>
-        </div>
-        <div class="ai-detail-row">
-          <span class="ai-detail-label">Automated Edge Self-Corrections:</span>
-          <span class="ai-detail-val" id="audit-recoveries" style="color:var(--accent-sky);">6110</span>
+        <div class="ai-detail-group">
+          <div class="ai-detail-row">
+            <span class="ai-detail-label">Payload Sanitization</span>
+            <span class="ai-detail-val status-badge-ok">ZERO SILENT DROPS</span>
+          </div>
+          <div class="ai-detail-row">
+            <span class="ai-detail-label">Edge Self-Corrections</span>
+            <span class="ai-detail-val status-badge-cyan" id="audit-recoveries">6,110</span>
+          </div>
         </div>
       </div>
 
@@ -697,7 +705,7 @@
     </div>
   </div>
 
-  <script src="/static/engine_3d.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/engine_3d.js?v=20260909_07"></script>
+  <script src="/static/app.js?v=20260909_07"></script>
 </body>
 </html>

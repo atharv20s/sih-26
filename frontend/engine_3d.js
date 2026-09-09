@@ -23,14 +23,15 @@ class AeroEngine3D {
     this.heatmapEnabled = true;
     this.clock = new THREE.Clock();
     this.viewMode = 'overview';
+    this.isTransitioning = false;
 
     this.parts = {};
     this.initialPositions = {};
     this.fluidParticles = [];
     this.calloutSprites = [];
 
-    this.targetCameraPos = new THREE.Vector3(0, 3.2, 6.8);
-    this.targetLookAt = new THREE.Vector3(0, 0.1, 0);
+    this.targetCameraPos = new THREE.Vector3(0, 3.4, 7.2);
+    this.targetLookAt = new THREE.Vector3(0.1, 0.1, 0);
 
     this.initScene();
     this.initThermalShaders();
@@ -69,10 +70,25 @@ class AeroEngine3D {
 
     this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.05;
+    this.controls.dampingFactor = 0.08;
     this.controls.target.copy(this.targetLookAt);
-    this.controls.maxDistance = 16;
-    this.controls.minDistance = 1.2;
+    this.controls.maxDistance = 25;
+    this.controls.minDistance = 0.5;
+    this.controls.enableZoom = true;
+    this.controls.zoomSpeed = 1.4;
+    this.controls.enableRotate = true;
+    this.controls.rotateSpeed = 0.8;
+    this.controls.enablePan = true;
+    this.controls.panSpeed = 0.8;
+
+    // Immediately stop automated camera lerp as soon as user drags or zooms
+    const cancelTransition = () => {
+      this.isTransitioning = false;
+    };
+    this.controls.addEventListener('start', cancelTransition);
+    this.canvas.addEventListener('wheel', cancelTransition, { passive: true });
+    this.canvas.addEventListener('pointerdown', cancelTransition, { passive: true });
+    this.canvas.addEventListener('touchstart', cancelTransition, { passive: true });
   }
 
   initThermalShaders() {
@@ -787,6 +803,7 @@ class AeroEngine3D {
   // -------------------------------------------------------------------------
   setViewMode(mode) {
     this.viewMode = mode;
+    this.isTransitioning = true;
     if (mode === 'overview') {
       this.targetCameraPos.set(0, 3.4, 7.2);
       this.targetLookAt.set(0.1, 0.1, 0);
@@ -797,6 +814,28 @@ class AeroEngine3D {
       this.targetCameraPos.set(1.4, 0.7, 3.2);
       this.targetLookAt.set(1.4, -0.4, 0.6);
     }
+  }
+
+  zoomIn(fraction = 0.25) {
+    this.isTransitioning = false;
+    const target = this.controls.target;
+    const offset = new THREE.Vector3().subVectors(this.camera.position, target);
+    const curDist = offset.length();
+    const newDist = Math.max(this.controls.minDistance + 0.2, curDist * (1.0 - fraction));
+    offset.setLength(newDist);
+    this.camera.position.copy(target).add(offset);
+    this.controls.update();
+  }
+
+  zoomOut(fraction = 0.25) {
+    this.isTransitioning = false;
+    const target = this.controls.target;
+    const offset = new THREE.Vector3().subVectors(this.camera.position, target);
+    const curDist = offset.length();
+    const newDist = Math.min(this.controls.maxDistance - 0.5, curDist * (1.0 + fraction));
+    offset.setLength(newDist);
+    this.camera.position.copy(target).add(offset);
+    this.controls.update();
   }
 
   setExplodedView(input) {
@@ -854,9 +893,16 @@ class AeroEngine3D {
       this.thermalUniforms.uTime.value = elapsedTime;
     }
 
-    // Smooth camera transition toward View Manager target
-    this.camera.position.lerp(this.targetCameraPos, 0.05);
-    this.controls.target.lerp(this.targetLookAt, 0.05);
+    // Smooth camera transition toward View Manager target ONLY during active transition
+    if (this.isTransitioning) {
+      this.camera.position.lerp(this.targetCameraPos, 0.06);
+      this.controls.target.lerp(this.targetLookAt, 0.06);
+      if (this.camera.position.distanceTo(this.targetCameraPos) < 0.04) {
+        this.camera.position.copy(this.targetCameraPos);
+        this.controls.target.copy(this.targetLookAt);
+        this.isTransitioning = false;
+      }
+    }
 
     // Rotate UAV pusher propeller
     this.propellerAngle += (this.rpm / 60.0) * (2 * Math.PI) * 0.004;
