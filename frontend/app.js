@@ -135,6 +135,88 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${h}:${m}:${s}`;
   }
 
+  // -------------------------------------------------------------------------
+  // Subassembly Health Matrix Controller (High-Contrast Real-Time Cards)
+  // -------------------------------------------------------------------------
+  function updateSubassemblyHealth(healthData, telemetry) {
+    if (!healthData) return;
+
+    const components = [
+      {
+        id: 'cylinder_head',
+        metric: `${(telemetry && telemetry.cht !== undefined && !isNaN(telemetry.cht) ? telemetry.cht : 148.6).toFixed(1)}°C CHT`,
+      },
+      {
+        id: 'crankshaft',
+        metric: `${(telemetry && telemetry.vibration_rms !== undefined && !isNaN(telemetry.vibration_rms) ? telemetry.vibration_rms : 1.41).toFixed(2)} g VIB`,
+      },
+      {
+        id: 'lubrication_system',
+        metric: `${(telemetry && telemetry.oil_pressure !== undefined && !isNaN(telemetry.oil_pressure) && telemetry.oil_pressure > 0 ? telemetry.oil_pressure : 281.8).toFixed(1)} kPa`,
+      },
+      {
+        id: 'exhaust_manifold',
+        metric: `${(telemetry && telemetry.egt !== undefined && !isNaN(telemetry.egt) ? telemetry.egt : 667.7).toFixed(1)}°C EGT`,
+      }
+    ];
+
+    components.forEach(comp => {
+      const hVal = healthData[comp.id] !== undefined ? healthData[comp.id] : 0.91;
+      const pct = Math.max(0, Math.min(100, Math.round(hVal * 100)));
+
+      const statusEl = document.getElementById(`comp-status-${comp.id}`);
+      const barEl = document.getElementById(`comp-bar-${comp.id}`);
+      const metricEl = document.getElementById(`comp-metric-${comp.id}`);
+      const condEl = document.getElementById(`comp-cond-${comp.id}`);
+
+      if (statusEl) {
+        statusEl.textContent = `${pct}%`;
+        if (pct >= 80) {
+          statusEl.style.color = '#34d399';
+          statusEl.style.textShadow = '0 0 10px rgba(52, 211, 153, 0.45)';
+        } else if (pct >= 55) {
+          statusEl.style.color = '#fbbf24';
+          statusEl.style.textShadow = '0 0 10px rgba(251, 191, 36, 0.45)';
+        } else {
+          statusEl.style.color = '#f43f5e';
+          statusEl.style.textShadow = '0 0 10px rgba(244, 63, 94, 0.55)';
+        }
+      }
+
+      if (barEl) {
+        barEl.style.width = `${pct}%`;
+        barEl.classList.remove('warning', 'critical');
+        if (pct < 55) {
+          barEl.classList.add('critical');
+        } else if (pct < 80) {
+          barEl.classList.add('warning');
+        }
+      }
+
+      if (metricEl) {
+        metricEl.textContent = comp.metric;
+      }
+
+      if (condEl) {
+        condEl.classList.remove('warning', 'critical');
+        if (pct >= 85) {
+          condEl.textContent = 'NOMINAL';
+        } else if (pct >= 70) {
+          condEl.textContent = 'DEGRADED';
+          condEl.classList.add('warning');
+        } else if (pct >= 50) {
+          condEl.textContent = 'ELEVATED WEAR';
+          condEl.classList.add('warning');
+        } else {
+          condEl.textContent = 'CRITICAL';
+          condEl.classList.add('critical');
+        }
+      }
+    });
+  }
+
+  let envDebounceTimer = null;
+
   function updateEnvironmentalState() {
     if (!sliderAltitude || !sliderAmbientTemp) return;
     const altFt = parseFloat(sliderAltitude.value);
@@ -150,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
     envPressure.textContent = `Pressure: ${pressureInHg} inHg`;
 
     valAmbientTemp.textContent = `${ambC > 0 ? '+' : ''}${ambC.toFixed(1)} °C`;
-    const coolingFactor = Math.max(0.5, (1.0 + (15.0 - ambC) * 0.008) * Math.sqrt(densityRatio)).toFixed(2);
+    const coolingFactor = Math.max(0.35, (1.0 + (15.0 - ambC) * 0.012) * Math.sqrt(densityRatio)).toFixed(2);
     envConvection.textContent = `Cooling Factor: ${coolingFactor}x`;
 
     let condition = 'ISA Standard Day';
@@ -159,14 +241,59 @@ document.addEventListener('DOMContentLoaded', () => {
     if (altFt > 15000) condition += ' (Hypobaric)';
     envCondition.textContent = `Condition: ${condition}`;
 
-    // Feed environment parameters into live engine simulation
-    const envChtOffset = (ambC - 15.0) * 0.4 - (altFt / 20000.0) * 8.0;
-    engine3D.updateTelemetryState({
-      telemetry: {
-        cht: Math.max(110.0, 148.9 + envChtOffset),
-        egt: Math.max(500.0, 666.1 + (ambC - 15.0) * 0.6)
-      }
+    // Immediate dynamic physical response across all engine subsystems
+    const tempDelta = ambC - 15.0;
+    const coolingLoss = (1.0 - parseFloat(coolingFactor)) * 35.0;
+
+    const estCht = Math.max(105.0, 148.6 + tempDelta * 0.75 + coolingLoss);
+    const estEgt = Math.max(500.0, 667.7 + tempDelta * 0.45 + coolingLoss * 0.35);
+    const altBuffet = (altFt / 10000.0) * 0.28;
+    const thermalStressVib = Math.max(0.0, (estCht - 148.0) * 0.014);
+    const estVib = Math.max(0.9, 1.41 + altBuffet + thermalStressVib);
+    const estOilTemp = Math.max(60.0, 85.0 + tempDelta * 0.45 + coolingLoss * 0.25);
+    const estOilP = Math.max(110.0, 281.8 - (estOilTemp - 85.0) * 1.3 - (altFt / 10000.0) * 8.0);
+    const estMap = Math.max(35.0, 101.3 * densityRatio);
+    const estFuelFlow = Math.max(4.0, 8.30 * (estMap / 92.0));
+
+    // 1. Immediately update 3D WebGL engine & Pinned 3D Callouts
+    engine3D.updateEnvironment(altFt, ambC);
+
+    // 2. Immediately update telemetry gauges on the left
+    updateGauge('cht', estCht);
+    updateGauge('egt', estEgt);
+    updateGauge('vibration_rms', estVib);
+    updateGauge('oil_temp', estOilTemp);
+    updateGauge('oil_pressure', estOilP);
+    updateGauge('fuel_flow', estFuelFlow);
+
+    // 3. Immediately calculate and update Subassembly Health
+    const cylHealth = Math.max(0.05, Math.min(1.0, 1.0 - Math.max(0.0, estCht - 150.0) / 65.0));
+    const crankHealth = Math.max(0.10, Math.min(1.0, 1.0 - Math.max(0.0, estVib - 1.2) / 2.3));
+    const lubeHealth = Math.max(0.10, Math.min(1.0, (estOilP - 130.0) / 180.0));
+    const exhaustHealth = Math.max(0.10, Math.min(1.0, 1.0 - Math.max(0.0, estEgt - 650.0) / 200.0));
+
+    updateSubassemblyHealth({
+      cylinder_head: cylHealth,
+      crankshaft: crankHealth,
+      lubrication_system: lubeHealth,
+      exhaust_manifold: exhaustHealth,
+    }, {
+      cht: estCht,
+      egt: estEgt,
+      vibration_rms: estVib,
+      oil_temp: estOilTemp,
+      oil_pressure: estOilP,
     });
+
+    // 4. Send environment update to server backend (debounced 50ms)
+    clearTimeout(envDebounceTimer);
+    envDebounceTimer = setTimeout(() => {
+      fetch('/api/simulate/environment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ altitude: altFt, ambient_temp: ambC })
+      }).catch(err => console.error('Environment sync error:', err));
+    }, 50);
   }
 
   if (sliderAltitude) sliderAltitude.addEventListener('input', updateEnvironmentalState);
@@ -203,18 +330,21 @@ document.addEventListener('DOMContentLoaded', () => {
       simData.telemetry.rpm = 2200;
       simData.telemetry.cht = 115.0;
       simData.telemetry.egt = 540.0;
+      simData.telemetry.vibration_rms = 1.1;
       simData.rul_cycles = 490;
     } else if (replaySeconds < 1500) {
       // Climb
       simData.telemetry.rpm = 5400;
       simData.telemetry.cht = 168.0;
       simData.telemetry.egt = 720.0;
+      simData.telemetry.vibration_rms = 1.85;
       simData.rul_cycles = 420;
     } else if (replaySeconds >= 4200 && replaySeconds < 5100) {
       // Thermal Spike Micro-Fault
       simData.telemetry.rpm = 5300;
       simData.telemetry.cht = 214.5;
       simData.telemetry.egt = 792.0;
+      simData.telemetry.vibration_rms = 2.45;
       simData.rul_cycles = 92;
       simData.adjusted_rul = 92;
       simData.fault_archetype = 'thermal_runaway';
@@ -224,6 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
       simData.telemetry.rpm = 4450;
       simData.telemetry.cht = 172.0;
       simData.telemetry.egt = 680.0;
+      simData.telemetry.vibration_rms = 1.55;
       simData.rul_cycles = 135;
       simData.adjusted_rul = 175;
       simData.extension_cycles = 40.0;
@@ -235,6 +366,18 @@ document.addEventListener('DOMContentLoaded', () => {
     for (const [s, val] of Object.entries(simData.telemetry)) {
       updateGauge(s, val);
     }
+
+    const cylHealth = Math.max(0.05, Math.min(1.0, 1.0 - Math.max(0.0, simData.telemetry.cht - 150.0) / 65.0));
+    const crankHealth = Math.max(0.10, Math.min(1.0, 1.0 - Math.max(0.0, simData.telemetry.vibration_rms - 1.2) / 2.3));
+    const lubeHealth = Math.max(0.10, Math.min(1.0, (simData.telemetry.oil_pressure - 130.0) / 180.0));
+    const exhaustHealth = Math.max(0.10, Math.min(1.0, 1.0 - Math.max(0.0, simData.telemetry.egt - 650.0) / 200.0));
+
+    updateSubassemblyHealth({
+      cylinder_head: cylHealth,
+      crankshaft: crankHealth,
+      lubrication_system: lubeHealth,
+      exhaust_manifold: exhaustHealth,
+    }, simData.telemetry);
   }
 
   if (replayTimeline) {
@@ -518,14 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 7. Component Health Matrix
         if (data.component_health) {
-          for (const [comp, hVal] of Object.entries(data.component_health)) {
-            const el = document.getElementById(`comp-status-${comp}`);
-            if (el) {
-              const pct = Math.round(hVal * 100);
-              el.textContent = `${pct}%`;
-              el.style.color = pct > 70 ? 'var(--accent-emerald)' : (pct > 40 ? 'var(--accent-amber)' : 'var(--accent-rose)');
-            }
-          }
+          updateSubassemblyHealth(data.component_health, data.telemetry);
         }
 
       } catch (err) {

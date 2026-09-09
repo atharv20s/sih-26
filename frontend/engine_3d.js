@@ -743,59 +743,99 @@ class AeroEngine3D {
   // -------------------------------------------------------------------------
   // 5. Pinned 3D Holographic Data Callouts
   // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // 5. Pinned 3D Holographic Data Callouts (Dynamic Real-Time Canvases)
+  // -------------------------------------------------------------------------
   setupPinnedCallouts() {
-    const createCallout = (title, lines, color = '#38bdf8') => {
+    this.callouts = {};
+
+    const createDynamicCallout = (id, title, lines, color = '#38bdf8') => {
       const canvas = document.createElement('canvas');
       canvas.width = 440;
       canvas.height = 140;
       const ctx = canvas.getContext('2d');
-
-      // Card background
-      ctx.fillStyle = 'rgba(8, 14, 28, 0.92)';
-      ctx.roundRect(6, 6, 428, 128, 10);
-      ctx.fill();
-
-      // Border & header line
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2.5;
-      ctx.roundRect(6, 6, 428, 128, 10);
-      ctx.stroke();
-
-      ctx.fillStyle = color;
-      ctx.font = 'bold 20px Inter, sans-serif';
-      ctx.fillText(title, 20, 38);
-
-      // Value lines
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '16px "JetBrains Mono", monospace';
-      lines.forEach((line, idx) => {
-        ctx.fillText(line, 20, 72 + idx * 28);
-      });
-
       const texture = new THREE.CanvasTexture(canvas);
       texture.minFilter = THREE.LinearFilter;
       const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
       const sprite = new THREE.Sprite(spriteMat);
       sprite.scale.set(1.5, 0.48, 1);
       this.scene.add(sprite);
+
+      this.callouts[id] = { canvas, ctx, texture, sprite, title, color, lines };
+      this.drawCallout(id);
       return sprite;
     };
 
     // 1. UAV Callout
-    this.calloutUAV = createCallout('AIRFRAME VIBRATION', ['VIBRATION: +1.8 G', 'RPM/CHT/EGT: 720 Hz, 148.6°C, 666.1°C'], '#38bdf8');
+    this.calloutUAV = createDynamicCallout('uav', 'AIRFRAME VIBRATION', [
+      'VIBRATION: 1.41 G (RMS)',
+      'FREQ: 720 Hz | AMB: +15.0°C | ALT: 12,500 ft'
+    ], '#38bdf8');
     this.calloutUAV.position.set(0.1, 2.05, -0.6);
 
     // 2. Engine Callout
-    this.calloutEngine = createCallout('RPM/CHT/EGT', ['720 Hz, 148.6 °C, 666.1 °C', 'ROTAX 914 F TURBO'], '#f59e0b');
+    this.calloutEngine = createDynamicCallout('engine', 'ROTAX 914 F TURBO', [
+      'RPM: 4535 | CHT: 148.6°C | EGT: 667.7°C',
+      'COOLING: 1.00x | CRUISE ENVELOPE'
+    ], '#f59e0b');
     this.calloutEngine.position.set(-0.85, 0.55, 0.95);
 
     // 3. Battery Callout
-    this.calloutBattery = createCallout('ALT/BATTERY PACK', ['CHARGE STATE: 100%', 'BUS VOLTAGE: 28.4 V'], '#10b981');
+    this.calloutBattery = createDynamicCallout('battery', 'ALT / BATTERY PACK', [
+      'BUS: 28.4 V | LOAD: 13.5 A',
+      'CHARGE: 100% | CELL BAL: OPTIMAL'
+    ], '#10b981');
     this.calloutBattery.position.set(2.05, 0.42, 0.35);
 
     // 4. Fluid Loop Callout
-    this.calloutLoop = createCallout('FUEL & OIL SYSTEM LOOP', ['FLOW: 8.30 L/h', 'PRESSURE: 281.8 kPa'], '#06b6d4');
+    this.calloutLoop = createDynamicCallout('loop', 'FUEL & OIL SYSTEM LOOP', [
+      'FLOW: 8.30 L/h | OIL P: 281.8 kPa',
+      'OIL TEMP: 96.4°C | NOMINAL CIRCULATION'
+    ], '#06b6d4');
     this.calloutLoop.position.set(0.75, 0.28, 0.8);
+  }
+
+  drawCallout(id) {
+    const entry = this.callouts[id];
+    if (!entry) return;
+    const { canvas, ctx, texture, title, color, lines } = entry;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Card background
+    ctx.fillStyle = 'rgba(8, 14, 28, 0.94)';
+    ctx.beginPath();
+    ctx.roundRect(6, 6, 428, 128, 10);
+    ctx.fill();
+
+    // Border & header line
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(6, 6, 428, 128, 10);
+    ctx.stroke();
+
+    // Header title
+    ctx.fillStyle = color;
+    ctx.font = 'bold 20px Inter, sans-serif';
+    ctx.fillText(title, 20, 38);
+
+    // Value lines
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px "JetBrains Mono", monospace';
+    lines.forEach((line, idx) => {
+      ctx.fillText(line, 20, 72 + idx * 28);
+    });
+
+    texture.needsUpdate = true;
+  }
+
+  updateCalloutData(id, lines, newColor = null) {
+    const entry = this.callouts[id];
+    if (!entry) return;
+    entry.lines = lines;
+    if (newColor) entry.color = newColor;
+    this.drawCallout(id);
   }
 
   // -------------------------------------------------------------------------
@@ -862,15 +902,85 @@ class AeroEngine3D {
 
   updateTelemetryState(data) {
     if (data.telemetry) {
-      this.rpm = data.telemetry.rpm || 4535.4;
-      this.cht = data.telemetry.cht || 148.6;
-      this.egt = data.telemetry.egt || 667.7;
+      const tel = data.telemetry;
+      this.rpm = tel.rpm || 4535.4;
+      this.cht = isNaN(tel.cht) ? 210.0 : (tel.cht || 148.6);
+      this.egt = tel.egt || 667.7;
+      const vib = isNaN(tel.vibration_rms) ? 1.41 : tel.vibration_rms;
+      const oilP = (tel.oil_pressure && tel.oil_pressure > 0) ? tel.oil_pressure : 110.0;
+      const oilTemp = tel.oil_temp || 96.4;
+      const fuelFlow = tel.fuel_flow || 8.30;
+      const alt = tel.altitude !== undefined ? tel.altitude : 12500;
+      const ambTemp = tel.ambient_temp !== undefined ? tel.ambient_temp : 15.0;
+      const coolingFactor = tel.cooling_factor !== undefined ? tel.cooling_factor : 1.0;
 
       if (this.thermalUniforms) {
         this.thermalUniforms.uCht.value = this.cht;
         this.thermalUniforms.uEgt.value = this.egt;
       }
+
+      // Update 3D Pinned Callouts in Real-Time
+      if (this.callouts) {
+        // 1. Airframe Vibration Callout
+        const vibColor = vib >= 3.5 ? '#f43f5e' : (vib >= 2.4 ? '#f59e0b' : '#38bdf8');
+        const freqHz = Math.round(this.rpm / 60.0);
+        this.updateCalloutData('uav', [
+          `VIBRATION: ${vib.toFixed(2)} G (RMS)`,
+          `FREQ: ${freqHz} Hz | AMB: ${ambTemp > 0 ? '+' : ''}${ambTemp.toFixed(1)}°C | ALT: ${Math.round(alt).toLocaleString()} ft`
+        ], vibColor);
+
+        // 2. Engine Callout
+        const engColor = this.cht >= 200.0 ? '#f43f5e' : (this.cht >= 175.0 ? '#f59e0b' : '#f59e0b');
+        const engStatus = this.cht >= 200.0 ? 'THERMAL ALERT' : (data.fault_archetype === 'oil_starvation' ? 'OIL STARVED' : 'CRUISE NOMINAL');
+        this.updateCalloutData('engine', [
+          `RPM: ${Math.round(this.rpm)} | CHT: ${this.cht.toFixed(1)}°C | EGT: ${this.egt.toFixed(1)}°C`,
+          `COOLING: ${coolingFactor}x | STATUS: ${engStatus}`
+        ], engColor);
+
+        // 3. Battery Callout
+        const loadA = (12.0 + (alt / 10000.0) * 1.5).toFixed(1);
+        this.updateCalloutData('battery', [
+          `BUS: 28.4 V | LOAD: ${loadA} A`,
+          `CHARGE: 100% | CELL BAL: OPTIMAL`
+        ], '#10b981');
+
+        // 4. Fluid Loop Callout
+        const loopColor = oilP < 200.0 ? '#f43f5e' : '#06b6d4';
+        const loopStatus = oilP < 200.0 ? 'LOW PRESSURE ALERT' : 'CIRCULATION OK';
+        this.updateCalloutData('loop', [
+          `FLOW: ${fuelFlow.toFixed(2)} L/h | OIL P: ${oilP.toFixed(1)} kPa`,
+          `OIL TEMP: ${oilTemp.toFixed(1)}°C | ${loopStatus}`
+        ], loopColor);
+      }
     }
+  }
+
+  updateEnvironment(altFt, ambC) {
+    // Immediate response to slider movement before next WebSocket frame arrives
+    const densityRatio = Math.pow(Math.max(0.01, 1 - 2.25577e-5 * altFt), 4.25588);
+    const coolingFactor = Math.max(0.4, (1.0 + (15.0 - ambC) * 0.012) * Math.sqrt(densityRatio)).toFixed(2);
+    const tempDelta = ambC - 15.0;
+    const estCht = Math.max(110.0, 148.6 + tempDelta * 0.75 + (1.0 - coolingFactor) * 35.0);
+    const estEgt = Math.max(520.0, 667.7 + tempDelta * 0.45 + (1.0 - coolingFactor) * 20.0);
+    const estVib = Math.max(0.9, 1.41 + (altFt / 10000.0) * 0.28 + Math.max(0.0, (estCht - 148.0) * 0.014));
+    const estOilTemp = Math.max(65.0, 85.0 + tempDelta * 0.45 + (1.0 - coolingFactor) * 15.0);
+    const estOilP = Math.max(120.0, 281.8 - (estOilTemp - 85.0) * 1.3 - (altFt / 10000.0) * 8.0);
+    const estFuelFlow = Math.max(4.2, 8.30 * densityRatio);
+
+    this.updateTelemetryState({
+      telemetry: {
+        rpm: this.rpm,
+        cht: estCht,
+        egt: estEgt,
+        vibration_rms: estVib,
+        oil_temp: estOilTemp,
+        oil_pressure: estOilP,
+        fuel_flow: estFuelFlow,
+        altitude: altFt,
+        ambient_temp: ambC,
+        cooling_factor: coolingFactor
+      }
+    });
   }
 
   toggleHeatmap(forceState) {

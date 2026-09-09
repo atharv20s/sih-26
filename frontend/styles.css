@@ -281,7 +281,7 @@ body::before {
   background: linear-gradient(90deg, #f43f5e, #dc2626);
 }
 
-/* Component Health Matrix */
+/* Component Health Matrix (High-Contrast, Visible Digital Twin Cards) */
 .component-matrix {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -290,27 +290,102 @@ body::before {
 }
 
 .comp-card {
-  background: rgba(13, 18, 31, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(13, 18, 31, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.3);
   border-radius: var(--radius-sm);
-  padding: 7px 9px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  transition: all 0.25s ease;
+}
+
+.comp-card:hover {
+  border-color: var(--accent-sky);
+  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.25);
+}
+
+.comp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
 }
 
 .comp-name {
-  font-size: 10px;
-  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
 .comp-status {
-  font-size: 12px;
+  font-size: 14px;
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: 900;
+  color: #34d399;
+  text-shadow: 0 0 10px rgba(52, 211, 153, 0.45);
+}
+
+.comp-bar-bg {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 3px 0 2px;
+}
+
+.comp-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #10b981, #34d399);
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.comp-bar-fill.warning {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.comp-bar-fill.critical {
+  background: linear-gradient(90deg, #f43f5e, #ef4444);
+}
+
+.comp-footer {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 5px;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  margin-top: 1px;
+}
+
+.comp-metric {
+  color: var(--accent-sky);
+  font-weight: 600;
+}
+
+.comp-condition {
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  font-size: 8.5px;
+  letter-spacing: 0.3px;
+}
+
+.comp-condition.warning {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.comp-condition.critical {
+  background: rgba(244, 63, 94, 0.18);
+  color: #f43f5e;
+  border-color: rgba(244, 63, 94, 0.4);
 }
 
 /* Center 3D Digital Twin Viewport */

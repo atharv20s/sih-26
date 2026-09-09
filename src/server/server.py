@@ -38,6 +38,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Pydantic request models
+class FaultInjectionRequest(BaseModel):
+    fault_type: Optional[str] = None
+
+class EnvironmentRequest(BaseModel):
+    altitude: float
+    ambient_temp: float
+
 # Global runtime state
 class SimulationController:
     def __init__(self):
@@ -56,6 +64,17 @@ class SimulationController:
         self.injected_fault: Optional[str] = None
         self.health = 1.0
         self.is_paused = False
+        self.altitude = 12500.0
+        self.ambient_temp = 15.0
+        self.air_density = 0.812
+        self.cooling_factor = 1.0
+
+    def set_environment(self, altitude: float, ambient_temp: float):
+        self.altitude = float(np.clip(altitude, 0.0, 25000.0))
+        self.ambient_temp = float(np.clip(ambient_temp, -50.0, 60.0))
+        density_ratio = max(0.05, (1.0 - 2.25577e-5 * self.altitude) ** 4.25588)
+        self.air_density = round(1.225 * density_ratio, 3)
+        self.cooling_factor = round(max(0.35, (1.0 + (15.0 - self.ambient_temp) * 0.012) * np.sqrt(density_ratio)), 2)
 
     def inject_fault(self, fault_type: Optional[str]):
         self.injected_fault = fault_type
@@ -64,15 +83,29 @@ class SimulationController:
         self.cycle += 1
         noise = lambda scale: float(np.random.normal(0, scale))
 
-        # Base nominal walk centered around 4535.4 RPM TAPAS cruise
-        self.rpm = 4535.4 + (self.throttle - 0.72) * 1200.0 + noise(10.0)
-        self.fuel_flow = 8.30 + (self.throttle - 0.72) * 6.0 + noise(0.08)
+        # Dynamic environmental & atmospheric calculations
+        density_ratio = max(0.05, (1.0 - 2.25577e-5 * self.altitude) ** 4.25588)
+        self.air_density = round(1.225 * density_ratio, 3)
+        self.cooling_factor = round(max(0.35, (1.0 + (15.0 - self.ambient_temp) * 0.012) * np.sqrt(density_ratio)), 2)
 
-        # Baseline thermal and mechanical calculations
-        base_cht = 148.6 + (self.throttle - 0.72) * 35.0 + (13.8 - self.mixture) * 5.0
-        base_egt = 667.7 + (self.throttle - 0.72) * 80.0 + (self.mixture - 13.8) * 12.0
-        base_vib = 1.41 + (self.throttle - 0.72) * 0.70
-        base_oil_p = 281.8 - (self.oil_temp - 96.4) * 1.2
+        temp_delta = self.ambient_temp - 15.0
+        cooling_loss = (1.0 - self.cooling_factor) * 35.0
+
+        # Base nominal walk centered around 4535.4 RPM TAPAS cruise
+        self.rpm = 4535.4 + (self.throttle - 0.72) * 1200.0 + temp_delta * 2.0 + noise(8.0)
+
+        # Baseline thermal and mechanical calculations dynamically modulated by ambient temp & altitude
+        base_cht = 148.6 + (self.throttle - 0.72) * 35.0 + (13.8 - self.mixture) * 5.0 + temp_delta * 0.75 + cooling_loss
+        base_egt = 667.7 + (self.throttle - 0.72) * 80.0 + (self.mixture - 13.8) * 12.0 + temp_delta * 0.45 + cooling_loss * 0.35
+
+        # Vibration responds dynamically to altitude buffeting, RPM, and thermal head expansion
+        alt_buffet = (self.altitude / 10000.0) * 0.28
+        thermal_stress_vib = max(0.0, (base_cht - 148.0) * 0.014)
+        base_vib = 1.41 + (self.throttle - 0.72) * 0.70 + alt_buffet + thermal_stress_vib
+
+        # Oil temperature & pressure response
+        base_oil_temp = 85.0 + temp_delta * 0.45 + cooling_loss * 0.25
+        base_oil_p = 281.8 - (base_oil_temp - 85.0) * 1.3 - (self.altitude / 10000.0) * 8.0
 
         # Gradual degradation
         self.health = max(0.05, 1.0 - (self.cycle * 0.0012))
@@ -80,17 +113,16 @@ class SimulationController:
 
         # Apply specific injected fault or natural degradation
         if self.injected_fault == "thermal_shock":
-            # Cylinder head cooling failure / thermal surge
-            self.cht = min(235.0, self.cht + 3.5 + noise(0.5))
-            self.egt = min(820.0, self.egt + 2.0 + noise(1.0))
+            self.cht = min(240.0, self.cht + 3.5 + noise(0.5))
+            self.egt = min(840.0, self.egt + 2.5 + noise(1.0))
+            self.vibration_rms = min(3.8, self.vibration_rms + 0.08)
         elif self.injected_fault == "sensor_dropout":
-            # Sensor Auditor demonstration: corrupt CHT and oil_pressure
             return {
                 "rpm": round(self.rpm, 1),
-                "cht": float("nan"),  # Missing/corrupted
+                "cht": float("nan"),
                 "egt": round(self.egt, 1),
                 "oil_temp": round(self.oil_temp, 1),
-                "oil_pressure": -999.0,  # Out-of-bounds corruption
+                "oil_pressure": -999.0,
                 "fuel_flow": round(self.fuel_flow, 2),
                 "vibration_rms": round(self.vibration_rms, 2),
                 "map": round(self.map_kpa, 1),
@@ -98,19 +130,27 @@ class SimulationController:
                 "torque": 24.5,
                 "crank_pos": float((self.cycle * 35) % 360),
                 "coolant_temp": round(self.coolant_temp, 1),
+                "altitude": round(self.altitude, 1),
+                "ambient_temp": round(self.ambient_temp, 1),
+                "air_density": self.air_density,
+                "cooling_factor": self.cooling_factor,
             }
         elif self.injected_fault == "oil_leak":
             self.oil_pressure = max(110.0, self.oil_pressure - 4.5 + noise(1.0))
             self.oil_temp = min(135.0, self.oil_temp + 1.2)
+            self.vibration_rms = min(3.5, self.vibration_rms + 0.05)
         elif self.injected_fault == "vibration_spike":
-            self.vibration_rms = min(4.2, self.vibration_rms + 0.15 + noise(0.04))
+            self.vibration_rms = min(4.4, self.vibration_rms + 0.18 + noise(0.05))
         else:
-            # Nominal degradation response
-            self.cht = base_cht + deg_factor * 15.0 + noise(0.6)
-            self.egt = base_egt + deg_factor * 20.0 + noise(1.2)
+            # Nominal degradation response with ambient coupling
+            self.cht = base_cht + deg_factor * 15.0 + noise(0.5)
+            self.egt = base_egt + deg_factor * 20.0 + noise(1.0)
             self.vibration_rms = base_vib + deg_factor * 0.4 + noise(0.02)
-            self.oil_pressure = base_oil_p - deg_factor * 25.0 + noise(1.5)
-            self.oil_temp = 85.0 + deg_factor * 12.0 + noise(0.4)
+            self.oil_pressure = base_oil_p - deg_factor * 25.0 + noise(1.2)
+            self.oil_temp = base_oil_temp + deg_factor * 12.0 + noise(0.3)
+
+        self.map_kpa = round(max(35.0, 101.3 * density_ratio), 1)
+        self.fuel_flow = round(max(4.0, (8.30 + (self.throttle - 0.72) * 6.0) * (self.map_kpa / 92.0) + noise(0.05)), 2)
 
         return {
             "rpm": round(self.rpm, 1),
@@ -125,6 +165,10 @@ class SimulationController:
             "torque": 24.5,
             "crank_pos": float((self.cycle * 35) % 360),
             "coolant_temp": round(self.coolant_temp, 1),
+            "altitude": round(self.altitude, 1),
+            "ambient_temp": round(self.ambient_temp, 1),
+            "air_density": self.air_density,
+            "cooling_factor": self.cooling_factor,
         }
 
 
@@ -271,6 +315,20 @@ async def inject_fault(req: FaultInjectionRequest):
         "success": True,
         "active_fault": sim.injected_fault,
         "message": f"Injected fault set to: {sim.injected_fault or 'CLEAR (NOMINAL)'}",
+    }
+
+
+@app.post("/api/simulate/environment")
+async def update_environment(req: EnvironmentRequest):
+    """Dynamically update flight altitude and ambient temperature in real time."""
+    sim.set_environment(req.altitude, req.ambient_temp)
+    return {
+        "success": True,
+        "altitude": sim.altitude,
+        "ambient_temp": sim.ambient_temp,
+        "air_density": sim.air_density,
+        "cooling_factor": sim.cooling_factor,
+        "message": f"Environment set to Alt: {sim.altitude}ft, Amb: {sim.ambient_temp}°C",
     }
 
 

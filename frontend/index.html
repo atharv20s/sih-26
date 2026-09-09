@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SIH26054 — Aero Engine Digital Twin (PINN + DRL + LangGraph)</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909_07">
+  <link rel="stylesheet" href="/static/styles.css?v=20260909_08">
   <!-- Three.js and OrbitControls from CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -128,21 +128,52 @@
           <span class="panel-badge">DIGITAL TWIN</span>
         </div>
         <div class="component-matrix">
-          <div class="comp-card">
-            <span class="comp-name">Cylinder Head</span>
-            <span class="comp-status" id="comp-status-cylinder_head" style="color:var(--accent-emerald);">100%</span>
+          <div class="comp-card" id="card-cylinder_head">
+            <div class="comp-header">
+              <span class="comp-name">Cylinder Head</span>
+              <span class="comp-status" id="comp-status-cylinder_head">100%</span>
+            </div>
+            <div class="comp-bar-bg"><div class="comp-bar-fill" id="comp-bar-cylinder_head" style="width: 100%;"></div></div>
+            <div class="comp-footer">
+              <span class="comp-metric" id="comp-metric-cylinder_head">148.6°C CHT</span>
+              <span class="comp-condition" id="comp-cond-cylinder_head">NOMINAL</span>
+            </div>
           </div>
-          <div class="comp-card">
-            <span class="comp-name">Crankshaft / Bearing</span>
-            <span class="comp-status" id="comp-status-crankshaft" style="color:var(--accent-emerald);">91%</span>
+
+          <div class="comp-card" id="card-crankshaft">
+            <div class="comp-header">
+              <span class="comp-name">Crankshaft / Bearing</span>
+              <span class="comp-status" id="comp-status-crankshaft">91%</span>
+            </div>
+            <div class="comp-bar-bg"><div class="comp-bar-fill" id="comp-bar-crankshaft" style="width: 91%;"></div></div>
+            <div class="comp-footer">
+              <span class="comp-metric" id="comp-metric-crankshaft">1.41 g VIB</span>
+              <span class="comp-condition" id="comp-cond-crankshaft">NOMINAL</span>
+            </div>
           </div>
-          <div class="comp-card">
-            <span class="comp-name">Lubrication Loop</span>
-            <span class="comp-status" id="comp-status-lubrication_system" style="color:var(--accent-emerald);">91%</span>
+
+          <div class="comp-card" id="card-lubrication_system">
+            <div class="comp-header">
+              <span class="comp-name">Lubrication Loop</span>
+              <span class="comp-status" id="comp-status-lubrication_system">91%</span>
+            </div>
+            <div class="comp-bar-bg"><div class="comp-bar-fill" id="comp-bar-lubrication_system" style="width: 91%;"></div></div>
+            <div class="comp-footer">
+              <span class="comp-metric" id="comp-metric-lubrication_system">281.8 kPa</span>
+              <span class="comp-condition" id="comp-cond-lubrication_system">NOMINAL</span>
+            </div>
           </div>
-          <div class="comp-card">
-            <span class="comp-name">Exhaust Manifold</span>
-            <span class="comp-status" id="comp-status-exhaust_manifold" style="color:var(--accent-emerald);">91%</span>
+
+          <div class="comp-card" id="card-exhaust_manifold">
+            <div class="comp-header">
+              <span class="comp-name">Exhaust Manifold</span>
+              <span class="comp-status" id="comp-status-exhaust_manifold">91%</span>
+            </div>
+            <div class="comp-bar-bg"><div class="comp-bar-fill" id="comp-bar-exhaust_manifold" style="width: 91%;"></div></div>
+            <div class="comp-footer">
+              <span class="comp-metric" id="comp-metric-exhaust_manifold">667.7°C EGT</span>
+              <span class="comp-condition" id="comp-cond-exhaust_manifold">NOMINAL</span>
+            </div>
           </div>
         </div>
       </div>
@@ -705,7 +736,7 @@
     </div>
   </div>
 
-  <script src="/static/engine_3d.js?v=20260909_07"></script>
-  <script src="/static/app.js?v=20260909_07"></script>
+  <script src="/static/engine_3d.js?v=20260909_08"></script>
+  <script src="/static/app.js?v=20260909_08"></script>
 </body>
 </html>
