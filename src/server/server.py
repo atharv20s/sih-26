@@ -78,13 +78,18 @@ class SimulationController:
 
     def inject_fault(self, fault_type: Optional[str]):
         self.injected_fault = fault_type
+        if fault_type is None:
+            self.cht = 148.6
+            self.egt = 667.7
+            self.oil_pressure = 281.8
+            self.oil_temp = 96.4
+            self.vibration_rms = 1.41
 
     def step(self) -> Dict[str, float]:
         self.cycle += 1
         noise = lambda scale: float(np.random.normal(0, scale))
 
         # Dynamic environmental & atmospheric calculations
-        self.altitude = float(np.clip(self.altitude + noise(0.8), 0.0, 25000.0))
         density_ratio = max(0.05, (1.0 - 2.25577e-5 * self.altitude) ** 4.25588)
         self.air_density = round(1.225 * density_ratio, 3)
         self.cooling_factor = round(max(0.35, (1.0 + (15.0 - self.ambient_temp) * 0.012) * np.sqrt(density_ratio)), 2)
@@ -312,6 +317,14 @@ async def get_benchmarks():
 async def inject_fault(req: FaultInjectionRequest):
     """Trigger or clear a fault injection in the live telemetry stream."""
     sim.inject_fault(req.fault_type)
+    if req.fault_type is None:
+        orchestrator._buffer = []
+        orchestrator._smoothed_health = {
+            "cylinder_head": 1.0,
+            "crankshaft": 1.0,
+            "lubrication_system": 1.0,
+            "exhaust_manifold": 1.0,
+        }
     return {
         "success": True,
         "active_fault": sim.injected_fault,

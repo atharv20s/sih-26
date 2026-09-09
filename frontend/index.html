@@ -1,14 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SIH26054 — Aero Engine Digital Twin (PINN + DRL + LangGraph)</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909_09">
+  <link rel="stylesheet" href="/static/styles.css?v=20260910_01">
   <!-- Three.js and OrbitControls from CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
+
 <body>
 
   <!-- Top Aerospace Navbar -->
@@ -30,7 +32,9 @@
         <span style="color:var(--accent-sky);">FAIL-SAFE RECOVERY:</span>
         <span style="color:var(--accent-emerald); font-weight:700;">77.5% EDGE AUTO</span>
       </div>
-      <button class="header-btn" id="btn-architecture" style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(99, 102, 241, 0.25)); border-color: var(--accent-sky); font-weight:700;">ARCHITECTURE & FLOW</button>
+      <button class="header-btn" id="btn-architecture"
+        style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(99, 102, 241, 0.25)); border-color: var(--accent-sky); font-weight:700;">ARCHITECTURE
+        & FLOW</button>
       <button class="header-btn" id="btn-benchmarks">BENCHMARKS MATRIX</button>
     </div>
   </header>
@@ -46,22 +50,6 @@
           <span class="panel-badge">10 Hz LIVE</span>
         </div>
 
-        <!-- Atmospheric Flight Telemetry Strip -->
-        <div class="telemetry-env-strip">
-          <div class="env-strip-chip">
-            <span class="chip-label">✈️ ALTITUDE</span>
-            <span class="chip-val" id="chip-alt">12,500 FT</span>
-          </div>
-          <div class="env-strip-chip">
-            <span class="chip-label">🌡️ AMBIENT</span>
-            <span class="chip-val" id="chip-amb">+15.0°C</span>
-          </div>
-          <div class="env-strip-chip">
-            <span class="chip-label">💨 DENSITY</span>
-            <span class="chip-val" id="chip-density">0.812 kg/m³</span>
-          </div>
-        </div>
-
         <div class="gauge-grid">
           <!-- RPM -->
           <div class="sensor-gauge">
@@ -69,7 +57,9 @@
               <span class="gauge-name">Engine Speed (RPM)</span>
               <span class="gauge-val" id="val-rpm">4,800 RPM</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-rpm" style="width: 60%;"></div></div>
+            <div class="gauge-bar-bg">
+              <div class="gauge-bar-fill" id="bar-rpm" style="width: 60%;"></div>
+            </div>
           </div>
 
           <!-- CHT -->
@@ -78,7 +68,9 @@
               <span class="gauge-name">Cyl Head Temp (CHT)</span>
               <span class="gauge-val" id="val-cht">150.0 °C</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-cht" style="width: 44%;"></div></div>
+            <div class="gauge-bar-bg">
+              <div class="gauge-bar-fill" id="bar-cht" style="width: 44%;"></div>
+            </div>
           </div>
 
           <!-- EGT -->
@@ -87,7 +79,9 @@
               <span class="gauge-name">Exhaust Gas Temp (EGT)</span>
               <span class="gauge-val" id="val-egt">667.7 °C</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-egt" style="width: 52%;"></div></div>
+            <div class="gauge-bar-bg">
+              <div class="gauge-bar-fill" id="bar-egt" style="width: 52%;"></div>
+            </div>
           </div>
 
           <!-- Oil Pressure -->
@@ -96,7 +90,9 @@
               <span class="gauge-name">Oil Pressure</span>
               <span class="gauge-val" id="val-oil_pressure">281.8 kPa</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-oil_pressure" style="width: 50%;"></div></div>
+            <div class="gauge-bar-bg">
+              <div class="gauge-bar-fill" id="bar-oil_pressure" style="width: 50%;"></div>
+            </div>
           </div>
 
           <!-- Oil Temp -->
@@ -105,7 +101,9 @@
               <span class="gauge-name">Oil Temp</span>
               <span class="gauge-val" id="val-oil_temp">96.4 °C</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-oil_temp" style="width: 48%;"></div></div>
+            <div class="gauge-bar-bg">
+              <div class="gauge-bar-fill" id="bar-oil_temp" style="width: 48%;"></div>
+            </div>
           </div>
 
           <!-- Vibration RMS -->
@@ -114,7 +112,9 @@
               <span class="gauge-name">Vibration RMS</span>
               <span class="gauge-val" id="val-vibration_rms">1.41 g</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-vibration_rms" style="width: 32%;"></div></div>
+            <div class="gauge-bar-bg">
+              <div class="gauge-bar-fill" id="bar-vibration_rms" style="width: 32%;"></div>
+            </div>
           </div>
 
           <!-- Fuel Flow -->
@@ -123,7 +123,9 @@
               <span class="gauge-name">Fuel Flow Rate</span>
               <span class="gauge-val" id="val-fuel_flow">8.30 L/h</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-fuel_flow" style="width: 36%;"></div></div>
+            <div class="gauge-bar-bg">
+              <div class="gauge-bar-fill" id="bar-fuel_flow" style="width: 36%;"></div>
+            </div>
           </div>
 
           <!-- AFR -->
@@ -132,7 +134,9 @@
               <span class="gauge-name">Air-to-Fuel Ratio</span>
               <span class="gauge-val" id="val-afr">13.80 :1</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-afr" style="width: 55%;"></div></div>
+            <div class="gauge-bar-bg">
+              <div class="gauge-bar-fill" id="bar-afr" style="width: 55%;"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -149,7 +153,9 @@
               <span class="comp-name">Cylinder Head</span>
               <span class="comp-status" id="comp-status-cylinder_head">100%</span>
             </div>
-            <div class="comp-bar-bg"><div class="comp-bar-fill" id="comp-bar-cylinder_head" style="width: 100%;"></div></div>
+            <div class="comp-bar-bg">
+              <div class="comp-bar-fill" id="comp-bar-cylinder_head" style="width: 100%;"></div>
+            </div>
             <div class="comp-footer">
               <span class="comp-metric" id="comp-metric-cylinder_head">148.6°C CHT</span>
               <span class="comp-condition" id="comp-cond-cylinder_head">NOMINAL</span>
@@ -161,7 +167,9 @@
               <span class="comp-name">Crankshaft / Bearing</span>
               <span class="comp-status" id="comp-status-crankshaft">91%</span>
             </div>
-            <div class="comp-bar-bg"><div class="comp-bar-fill" id="comp-bar-crankshaft" style="width: 91%;"></div></div>
+            <div class="comp-bar-bg">
+              <div class="comp-bar-fill" id="comp-bar-crankshaft" style="width: 91%;"></div>
+            </div>
             <div class="comp-footer">
               <span class="comp-metric" id="comp-metric-crankshaft">1.41 g VIB</span>
               <span class="comp-condition" id="comp-cond-crankshaft">NOMINAL</span>
@@ -173,7 +181,9 @@
               <span class="comp-name">Lubrication Loop</span>
               <span class="comp-status" id="comp-status-lubrication_system">91%</span>
             </div>
-            <div class="comp-bar-bg"><div class="comp-bar-fill" id="comp-bar-lubrication_system" style="width: 91%;"></div></div>
+            <div class="comp-bar-bg">
+              <div class="comp-bar-fill" id="comp-bar-lubrication_system" style="width: 91%;"></div>
+            </div>
             <div class="comp-footer">
               <span class="comp-metric" id="comp-metric-lubrication_system">281.8 kPa</span>
               <span class="comp-condition" id="comp-cond-lubrication_system">NOMINAL</span>
@@ -185,7 +195,9 @@
               <span class="comp-name">Exhaust Manifold</span>
               <span class="comp-status" id="comp-status-exhaust_manifold">91%</span>
             </div>
-            <div class="comp-bar-bg"><div class="comp-bar-fill" id="comp-bar-exhaust_manifold" style="width: 91%;"></div></div>
+            <div class="comp-bar-bg">
+              <div class="comp-bar-fill" id="comp-bar-exhaust_manifold" style="width: 91%;"></div>
+            </div>
             <div class="comp-footer">
               <span class="comp-metric" id="comp-metric-exhaust_manifold">667.7°C EGT</span>
               <span class="comp-condition" id="comp-cond-exhaust_manifold">NOMINAL</span>
@@ -223,8 +235,10 @@
               <span id="exploded-val" class="pc-val">0%</span>
             </div>
             <button class="pc-btn active" id="btn-heatmap">GLSL HEATMAP</button>
-            <button class="pc-btn pc-zoom-btn" id="btn-zoom-in" title="Zoom In Camera (or scroll wheel)">➕ ZOOM IN</button>
-            <button class="pc-btn pc-zoom-btn" id="btn-zoom-out" title="Zoom Out Camera (or scroll wheel)">➖ ZOOM OUT</button>
+            <button class="pc-btn pc-zoom-btn" id="btn-zoom-in" title="Zoom In Camera (or scroll wheel)">➕ ZOOM
+              IN</button>
+            <button class="pc-btn pc-zoom-btn" id="btn-zoom-out" title="Zoom Out Camera (or scroll wheel)">➖ ZOOM
+              OUT</button>
             <button class="pc-btn" id="btn-reset-view">RESET CAMERA</button>
           </div>
         </div>
@@ -232,7 +246,9 @@
         <!-- Heatmap Color Legend -->
         <div class="heatmap-legend">
           <span>VOLUMETRIC THERMAL GRADIENT (CHT & EGT)</span>
-          <div class="legend-bar" style="background: linear-gradient(to right, #0f3899, #14a6e0, #1fc95c, #f5d020, #f77011, #e61c14, #fff1db);"></div>
+          <div class="legend-bar"
+            style="background: linear-gradient(to right, #0f3899, #14a6e0, #1fc95c, #f5d020, #f77011, #e61c14, #fff1db);">
+          </div>
           <div class="legend-labels">
             <span>70°C (Sump)</span>
             <span>148.9°C (CHT)</span>
@@ -265,7 +281,8 @@
                   <span class="env-label">✈️ Altitude (At Flight Ceiling)</span>
                   <span class="env-value" id="val-altitude">12,500 ft</span>
                 </div>
-                <input type="range" id="slider-altitude" min="0" max="20000" step="250" value="12500" class="env-slider">
+                <input type="range" id="slider-altitude" min="0" max="20000" step="250" value="12500"
+                  class="env-slider">
                 <div class="env-meta-row">
                   <span id="env-density">Air Density: 0.812 kg/m³</span>
                   <span id="env-pressure">Pressure: 18.75 inHg</span>
@@ -277,7 +294,8 @@
                   <span class="env-label">🌡️ Ambient Temp Temperature</span>
                   <span class="env-value" id="val-ambient-temp">+15.0 °C</span>
                 </div>
-                <input type="range" id="slider-ambient-temp" min="-40" max="50" step="1" value="15" class="env-slider temp-slider">
+                <input type="range" id="slider-ambient-temp" min="-40" max="50" step="1" value="15"
+                  class="env-slider temp-slider">
                 <div class="env-meta-row">
                   <span id="env-condition">Condition: ISA Standard Day</span>
                   <span id="env-convection">Cooling Factor: 1.00x</span>
@@ -312,7 +330,8 @@
                   </div>
                   <span>01:45:00</span>
                 </div>
-                <input type="range" id="replay-timeline" min="0" max="6300" step="1" value="2535" class="timeline-slider">
+                <input type="range" id="replay-timeline" min="0" max="6300" step="1" value="2535"
+                  class="timeline-slider">
               </div>
             </div>
           </div>
@@ -340,13 +359,23 @@
           <span class="panel-badge">TOOL 1</span>
         </div>
 
-        <div class="rul-hero-card">
-          <span class="rul-title">Remaining Useful Life (RUL)</span>
+        <div class="rul-hero-card" id="rul-hero-card">
+          <div class="rul-card-top">
+            <span class="rul-title">Remaining Useful Life (RUL)</span>
+            <span class="rul-status-pill status-ok" id="rul-status-badge">🟢 OPTIMAL</span>
+          </div>
           <div class="rul-value-wrap">
-            <span class="rul-number" id="rul-number">494</span>
+            <span class="rul-number" id="rul-number">485</span>
             <span class="rul-unit">CYCLES</span>
           </div>
-          <span class="rul-extension-tag" id="rul-extension">+15.0 cyc (DRL Protected)</span>
+          <div class="rul-time-row" id="rul-time-row">
+            <span class="rul-time-label">⏱️ SUSTAIN TIME:</span>
+            <span class="rul-time-val" id="rul-time-val">48h 30m Mission Endurance</span>
+          </div>
+          <div class="rul-extension-wrap">
+            <span class="rul-extension-tag" id="rul-extension">+15.0 cyc (DRL Protected)</span>
+            <span class="rul-time-ext" id="rul-time-ext">(+1h 30m Saved)</span>
+          </div>
         </div>
 
         <div class="ai-detail-group">
@@ -383,28 +412,39 @@
               <span class="fault-tag">CHT Overheat</span>
               <span class="fault-pct" id="fault-pct-cht_over">0%</span>
             </div>
-            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-cht_over" style="width: 0%; background: var(--accent-amber);"></div></div>
+            <div class="fault-bar-bg">
+              <div class="fault-bar-fill" id="fault-bar-cht_over" style="width: 0%; background: var(--accent-amber);">
+              </div>
+            </div>
           </div>
           <div class="fault-meter-row">
             <div class="fault-meter-header">
               <span class="fault-tag">Vibration Fatigue</span>
               <span class="fault-pct" id="fault-pct-vibration_over">0%</span>
             </div>
-            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-vibration_over" style="width: 0%; background: var(--accent-rose);"></div></div>
+            <div class="fault-bar-bg">
+              <div class="fault-bar-fill" id="fault-bar-vibration_over"
+                style="width: 0%; background: var(--accent-rose);"></div>
+            </div>
           </div>
           <div class="fault-meter-row">
             <div class="fault-meter-header">
               <span class="fault-tag">Oil Starvation</span>
               <span class="fault-pct" id="fault-pct-oil_starvation">100%</span>
             </div>
-            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-oil_starvation" style="width: 100%; background: #c084fc; box-shadow: 0 0 10px #c084fc;"></div></div>
+            <div class="fault-bar-bg">
+              <div class="fault-bar-fill" id="fault-bar-oil_starvation"
+                style="width: 100%; background: #c084fc; box-shadow: 0 0 10px #c084fc;"></div>
+            </div>
           </div>
           <div class="fault-meter-row">
             <div class="fault-meter-header">
               <span class="fault-tag">EGT Surge</span>
               <span class="fault-pct" id="fault-pct-egt_over">0%</span>
             </div>
-            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-egt_over" style="width: 0%; background: #f97316;"></div></div>
+            <div class="fault-bar-bg">
+              <div class="fault-bar-fill" id="fault-bar-egt_over" style="width: 0%; background: #f97316;"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -491,7 +531,10 @@
       </table>
 
       <div style="font-size: 11px; color: var(--text-muted); margin-top: 14px; line-height: 1.5;">
-        <strong style="color:var(--accent-sky);">Key Rigor Summary:</strong> Fourier's law constraint eliminates unphysical hallucinations under extreme UAV flight transients. The LangGraph cyclic state machine actively audits incoming payloads to prevent silent error cascades (achieving 77.5% automated edge recovery). The DRL action space is hard-bounded by PINN safety limits to eliminate catastrophic exploration during flight.
+        <strong style="color:var(--accent-sky);">Key Rigor Summary:</strong> Fourier's law constraint eliminates
+        unphysical hallucinations under extreme UAV flight transients. The LangGraph cyclic state machine actively
+        audits incoming payloads to prevent silent error cascades (achieving 77.5% automated edge recovery). The DRL
+        action space is hard-bounded by PINN safety limits to eliminate catastrophic exploration during flight.
       </div>
     </div>
   </div>
@@ -526,32 +569,42 @@
           <div class="diagram-action-bar">
             <span class="diagram-tag">SLIDE 1 • BENCHMARK COMPARISON MATRIX (REALISTIC 75–80% ACCURACY)</span>
             <div class="diagram-action-btns">
-              <a href="/static/assets/benchmark_matrix_realistic.jpg" download="IdeaForge_Benchmark_Comparison_Realistic.jpg" class="diagram-download-btn">
+              <a href="/static/assets/benchmark_matrix_realistic.jpg"
+                download="IdeaForge_Benchmark_Comparison_Realistic.jpg" class="diagram-download-btn">
                 ⬇️ Download Slide (16:9)
               </a>
-              <a href="/static/assets/benchmark_matrix_realistic.jpg" target="_blank" class="diagram-download-btn outline">
+              <a href="/static/assets/benchmark_matrix_realistic.jpg" target="_blank"
+                class="diagram-download-btn outline">
                 🔍 Full Screen
               </a>
             </div>
           </div>
-          <img src="/static/assets/benchmark_matrix_realistic.jpg" alt="IdeaForge Realistic Benchmark Comparison Matrix (75-80% Improvement)">
+          <img src="/static/assets/benchmark_matrix_realistic.jpg"
+            alt="IdeaForge Realistic Benchmark Comparison Matrix (75-80% Improvement)">
         </div>
         <div class="arch-card-grid">
           <div class="arch-feature-card">
             <h4>Realistic 78.6% RUL Prognostic Accuracy</h4>
             <p><strong>Baseline Paper (Zhang et al. 2021):</strong> 52.4% (Pure 1D-CNN overfits to noise).<br>
-            <strong>Modular Digital Twin (Li et al.):</strong> 63.1% (Decoupled Informer-1D).<br>
-            <strong>Proposed IdeaForge:</strong> <span style="color:var(--accent-emerald); font-weight:700;">78.6%</span> (Realistic +24.5% absolute gain via multi-agent physics loss).</p>
+              <strong>Modular Digital Twin (Li et al.):</strong> 63.1% (Decoupled Informer-1D).<br>
+              <strong>Proposed IdeaForge:</strong> <span
+                style="color:var(--accent-emerald); font-weight:700;">78.6%</span> (Realistic +24.5% absolute gain via
+              multi-agent physics loss).
+            </p>
           </div>
           <div class="arch-feature-card">
             <h4>62.4% Error Reduction (12.8 cycles MAE)</h4>
             <p><strong>Baseline Error:</strong> 47.6 cycles. Modular DT: 31.4 cycles.<br>
-            <strong>IdeaForge Envelope:</strong> 12.8 cycles MAE. Fourier thermodynamic regularization eliminates impossible trajectory drift under hypobaric altitude excursions.</p>
+              <strong>IdeaForge Envelope:</strong> 12.8 cycles MAE. Fourier thermodynamic regularization eliminates
+              impossible trajectory drift under hypobaric altitude excursions.
+            </p>
           </div>
           <div class="arch-feature-card">
             <h4>77.4% Automated Edge Sensor Recovery</h4>
             <p><strong>Baseline Paper:</strong> 0.0% recovery (silent error cascade poisons downstream predictions).<br>
-            <strong>IdeaForge:</strong> 77.4% automated edge recovery via LangGraph Sensor Auditor cross-channel imputation.</p>
+              <strong>IdeaForge:</strong> 77.4% automated edge recovery via LangGraph Sensor Auditor cross-channel
+              imputation.
+            </p>
           </div>
         </div>
       </div>
@@ -562,28 +615,34 @@
           <div class="diagram-action-bar">
             <span class="diagram-tag">SLIDE 2 • MULTI-AGENT DECISION & SAFETY CONTROL ARCHITECTURE</span>
             <div class="diagram-action-btns">
-              <a href="/static/assets/agent_decision_flowchart.jpg" download="IdeaForge_Agent_Decision_Flowchart.jpg" class="diagram-download-btn">
+              <a href="/static/assets/agent_decision_flowchart.jpg" download="IdeaForge_Agent_Decision_Flowchart.jpg"
+                class="diagram-download-btn">
                 ⬇️ Download Slide (16:9)
               </a>
-              <a href="/static/assets/agent_decision_flowchart.jpg" target="_blank" class="diagram-download-btn outline">
+              <a href="/static/assets/agent_decision_flowchart.jpg" target="_blank"
+                class="diagram-download-btn outline">
                 🔍 Full Screen
               </a>
             </div>
           </div>
-          <img src="/static/assets/agent_decision_flowchart.jpg" alt="IdeaForge Multi-Agent Decision and Safety Control Flowchart">
+          <img src="/static/assets/agent_decision_flowchart.jpg"
+            alt="IdeaForge Multi-Agent Decision and Safety Control Flowchart">
         </div>
         <div class="arch-card-grid">
           <div class="arch-feature-card">
             <h4>Three Parallel Specialized AI Branches</h4>
-            <p>Incoming telemetry simultaneously feeds: (1) PINN Fourier thermal engine, (2) 4-Class multi-spectral fault classifier, and (3) Safety-Shielded DRL policy agent with discrete throttle/AFR action space.</p>
+            <p>Incoming telemetry simultaneously feeds: (1) PINN Fourier thermal engine, (2) 4-Class multi-spectral
+              fault classifier, and (3) Safety-Shielded DRL policy agent with discrete throttle/AFR action space.</p>
           </div>
           <div class="arch-feature-card">
             <h4>LangGraph Orchestration & Decision Gates</h4>
-            <p>State machine executes physical bounds validation (Fourier residual &le; &epsilon;), anomaly severity assessment, and triggers the hard DRL safety shield to prevent engine redline exceedance.</p>
+            <p>State machine executes physical bounds validation (Fourier residual &le; &epsilon;), anomaly severity
+              assessment, and triggers the hard DRL safety shield to prevent engine redline exceedance.</p>
           </div>
           <div class="arch-feature-card">
             <h4>Triple Output & Cryptographic Audit</h4>
-            <p>Actuates 3D WebGL Ground Control digital twin, writes tamper-evident SHA-256 hash-chained flight logs, and executes autonomous engine de-rate cooling override.</p>
+            <p>Actuates 3D WebGL Ground Control digital twin, writes tamper-evident SHA-256 hash-chained flight logs,
+              and executes autonomous engine de-rate cooling override.</p>
           </div>
         </div>
       </div>
@@ -594,7 +653,8 @@
           <div class="diagram-action-bar">
             <span class="diagram-tag">SLIDE 3 • TELEMETRY-TO-PHYSICS ERD & PARAMETER SENSITIVITY MATRIX</span>
             <div class="diagram-action-btns">
-              <a href="/static/assets/erd_parameter_mapping.jpg" download="IdeaForge_ERD_Parameter_Sensitivity_Matrix.jpg" class="diagram-download-btn">
+              <a href="/static/assets/erd_parameter_mapping.jpg"
+                download="IdeaForge_ERD_Parameter_Sensitivity_Matrix.jpg" class="diagram-download-btn">
                 ⬇️ Download Slide (16:9)
               </a>
               <a href="/static/assets/erd_parameter_mapping.jpg" target="_blank" class="diagram-download-btn outline">
@@ -602,23 +662,29 @@
               </a>
             </div>
           </div>
-          <img src="/static/assets/erd_parameter_mapping.jpg" alt="IdeaForge Telemetry-to-Physics ERD and Parameter Sensitivity Matrix">
+          <img src="/static/assets/erd_parameter_mapping.jpg"
+            alt="IdeaForge Telemetry-to-Physics ERD and Parameter Sensitivity Matrix">
         </div>
         <div class="arch-card-grid">
           <div class="arch-feature-card">
             <h4>Thermodynamic Core: CHT & EGT</h4>
             <p><strong>CHT (120-240°C):</strong> Fourier 1D heat conduction across cylinder head aluminum fins.<br>
-            <strong>EGT (650-850°C):</strong> 1st Law Thermodynamics (Carnot combustion energy conservation).</p>
+              <strong>EGT (650-850°C):</strong> 1st Law Thermodynamics (Carnot combustion energy conservation).
+            </p>
           </div>
           <div class="arch-feature-card">
             <h4>Kinematic & Hydrodynamic Channels</h4>
             <p><strong>RPM (2200-2750):</strong> Bounded by mechanical inertia limits.<br>
-            <strong>Oil Press & Temp:</strong> Hydrodynamic thin-film lubrication (Reynolds equation) detecting bearing seizure.</p>
+              <strong>Oil Press & Temp:</strong> Hydrodynamic thin-film lubrication (Reynolds equation) detecting
+              bearing seizure.
+            </p>
           </div>
           <div class="arch-feature-card">
             <h4>Combustion Induction: MAP & AFR</h4>
             <p><strong>MAP (20-32 inHg):</strong> Ideal Gas Law (PV = nRT) governing intake airflow.<br>
-            <strong>AFR (11.5-15.0:1):</strong> Closed-loop stoichiometric bounds preventing lean knock and rich plug fouling.</p>
+              <strong>AFR (11.5-15.0:1):</strong> Closed-loop stoichiometric bounds preventing lean knock and rich plug
+              fouling.
+            </p>
           </div>
         </div>
       </div>
@@ -629,7 +695,8 @@
           <div class="diagram-action-bar">
             <span class="diagram-tag">SLIDE 4 • TECHNOLOGIES & DETAILED SYSTEM WORKFLOW</span>
             <div class="diagram-action-btns">
-              <a href="/static/assets/detailed_userflow.jpg" download="IdeaForge_Technologies_Userflow_Diagram.jpg" class="diagram-download-btn">
+              <a href="/static/assets/detailed_userflow.jpg" download="IdeaForge_Technologies_Userflow_Diagram.jpg"
+                class="diagram-download-btn">
                 ⬇️ Download Slide (16:9)
               </a>
               <a href="/static/assets/detailed_userflow.jpg" target="_blank" class="diagram-download-btn outline">
@@ -642,15 +709,18 @@
         <div class="arch-card-grid">
           <div class="arch-feature-card">
             <h4>Next.js + Three.js WebGL Frontend</h4>
-            <p>Real-time exploded-view 3D digital twin HUD, interactive cross-section inspection, dynamic thermal heatmap shaders, and instant telemetry gauges.</p>
+            <p>Real-time exploded-view 3D digital twin HUD, interactive cross-section inspection, dynamic thermal
+              heatmap shaders, and instant telemetry gauges.</p>
           </div>
           <div class="arch-feature-card">
             <h4>Node.js + Express + Kafka Ingestion</h4>
-            <p>High-throughput telemetry ingestion (100 Hz), sub-millisecond Redis buffer cache, and WebSocket dispatch to ground control stations.</p>
+            <p>High-throughput telemetry ingestion (100 Hz), sub-millisecond Redis buffer cache, and WebSocket dispatch
+              to ground control stations.</p>
           </div>
           <div class="arch-feature-card">
             <h4>TimescaleDB + Hyperledger Fabric</h4>
-            <p>PostgreSQL hypertables with 90% time-series compression paired with cryptographic SHA-256 distributed ledger for zero-tamper flight audit trails.</p>
+            <p>PostgreSQL hypertables with 90% time-series compression paired with cryptographic SHA-256 distributed
+              ledger for zero-tamper flight audit trails.</p>
           </div>
         </div>
       </div>
@@ -661,7 +731,8 @@
           <div class="diagram-action-bar">
             <span class="diagram-tag">SLIDE 5 • OPERATIONAL FEASIBILITY & VIABILITY ANALYSIS</span>
             <div class="diagram-action-btns">
-              <a href="/static/assets/slide4_feasibility.jpg" download="IdeaForge_Feasibility_Viability_Slide.jpg" class="diagram-download-btn">
+              <a href="/static/assets/slide4_feasibility.jpg" download="IdeaForge_Feasibility_Viability_Slide.jpg"
+                class="diagram-download-btn">
                 ⬇️ Download Slide (16:9)
               </a>
               <a href="/static/assets/slide4_feasibility.jpg" target="_blank" class="diagram-download-btn outline">
@@ -674,15 +745,18 @@
         <div class="arch-card-grid">
           <div class="arch-feature-card">
             <h4>STANAG 4586 Military Standard</h4>
-            <p>Direct drop-in compatibility with NATO STANAG 4586 UAV telemetry streams, ensuring out-of-the-box integration into Indian defense ground control stations.</p>
+            <p>Direct drop-in compatibility with NATO STANAG 4586 UAV telemetry streams, ensuring out-of-the-box
+              integration into Indian defense ground control stations.</p>
           </div>
           <div class="arch-feature-card">
             <h4>Zero Hardware Overhaul Required</h4>
-            <p>Leverages existing Rotax 914 F sensors (CHT thermocouples, EGT probes, oil pressure transducers, MAP sensors) without adding airframe weight.</p>
+            <p>Leverages existing Rotax 914 F sensors (CHT thermocouples, EGT probes, oil pressure transducers, MAP
+              sensors) without adding airframe weight.</p>
           </div>
           <div class="arch-feature-card">
             <h4>Edge Compute Lightweight Runtime</h4>
-            <p>PINN forward pass executes in &lt;18 ms on NVIDIA Jetson Orin Nano edge avionics, enabling full on-board autonomous safety shield intervention.</p>
+            <p>PINN forward pass executes in &lt;18 ms on NVIDIA Jetson Orin Nano edge avionics, enabling full on-board
+              autonomous safety shield intervention.</p>
           </div>
         </div>
       </div>
@@ -692,7 +766,8 @@
         <div class="arch-card-grid" style="margin-top:0;">
           <div class="arch-feature-card">
             <h4>Defense & Military UAV Operations</h4>
-            <p>Directly protects Indian Armed Forces MALE UAVs (TAPAS-BH-201, Heron) from in-flight engine seizure. Provides ground commanders with real-time RUL countdowns for decisive go/no-go abort calls.</p>
+            <p>Directly protects Indian Armed Forces MALE UAVs (TAPAS-BH-201, Heron) from in-flight engine seizure.
+              Provides ground commanders with real-time RUL countdowns for decisive go/no-go abort calls.</p>
             <div class="tech-badge-row">
               <span class="tech-badge-mini">TAPAS-BH-201</span>
               <span class="tech-badge-mini">Zero In-Flight Crashes</span>
@@ -702,7 +777,8 @@
 
           <div class="arch-feature-card">
             <h4>Air Traffic Control (ATC) Tower Integration</h4>
-            <p>Extends beyond the cockpit to airport tower rooms. Transmits automated distress telemetry 30-45 minutes before critical failure, allowing ATC to clear civil airspace corridors and reserve emergency runways.</p>
+            <p>Extends beyond the cockpit to airport tower rooms. Transmits automated distress telemetry 30-45 minutes
+              before critical failure, allowing ATC to clear civil airspace corridors and reserve emergency runways.</p>
             <div class="tech-badge-row">
               <span class="tech-badge-mini">ATC Tower Feed</span>
               <span class="tech-badge-mini">Predictive Glide Path</span>
@@ -712,7 +788,8 @@
 
           <div class="arch-feature-card">
             <h4>Commercial Aviation & Economic Savings</h4>
-            <p>Prevents catastrophic engine teardowns by shifting from arbitrary calendar schedules to condition-based maintenance. Saves ₹15–25 Crore per prevented UAV loss and over $2M per commercial overhaul cycle.</p>
+            <p>Prevents catastrophic engine teardowns by shifting from arbitrary calendar schedules to condition-based
+              maintenance. Saves ₹15–25 Crore per prevented UAV loss and over $2M per commercial overhaul cycle.</p>
             <div class="tech-badge-row">
               <span class="tech-badge-mini">₹15-25 Cr Saved</span>
               <span class="tech-badge-mini">Condition-Based TBO</span>
@@ -725,34 +802,43 @@
       <!-- Slide 7: Scientific Citations -->
       <div class="arch-tab-pane" id="tab-references">
         <div class="research-paper-card">
-          <div class="paper-title">1. Remaining Useful Life Prediction of Aero-Engine Based on Improved GWO and 1DCNN</div>
-          <div class="paper-meta">MDPI Aerospace (2023) / IEEE Shared Aero-Propulsion Benchmarks (NASA C-MAPSS FD001-FD004)</div>
-          <div class="paper-desc">Provided the degradation curve formulations, exponential health index decay dynamics, and baseline accuracy metrics (52.4% - 62.4%).</div>
+          <div class="paper-title">1. Remaining Useful Life Prediction of Aero-Engine Based on Improved GWO and 1DCNN
+          </div>
+          <div class="paper-meta">MDPI Aerospace (2023) / IEEE Shared Aero-Propulsion Benchmarks (NASA C-MAPSS
+            FD001-FD004)</div>
+          <div class="paper-desc">Provided the degradation curve formulations, exponential health index decay dynamics,
+            and baseline accuracy metrics (52.4% - 62.4%).</div>
         </div>
 
         <div class="research-paper-card">
-          <div class="paper-title">2. Digital-Twin Empowered Deep Reinforcement Learning for Dynamic Control in UAV Networks</div>
+          <div class="paper-title">2. Digital-Twin Empowered Deep Reinforcement Learning for Dynamic Control in UAV
+            Networks</div>
           <div class="paper-meta">IEEE Transactions on Intelligent Vehicles / IEEE IoT Journal (2024)</div>
-          <div class="paper-desc">Supplied the closed-loop digital twin synchronization protocol, sub-100ms latency tolerances, and safe DRL action-space bounding principles.</div>
+          <div class="paper-desc">Supplied the closed-loop digital twin synchronization protocol, sub-100ms latency
+            tolerances, and safe DRL action-space bounding principles.</div>
         </div>
 
         <div class="research-paper-card">
-          <div class="paper-title">3. Prediction of Remaining Useful Life for Electronic and Avionic Components in Aero Environments</div>
+          <div class="paper-title">3. Prediction of Remaining Useful Life for Electronic and Avionic Components in Aero
+            Environments</div>
           <div class="paper-meta">IEEE Aerospace and Electronic Systems Society (AESS)</div>
-          <div class="paper-desc">Provided the physical models for sensor drift, thermal vibration cross-coupling, and micro-fault cascading mechanisms.</div>
+          <div class="paper-desc">Provided the physical models for sensor drift, thermal vibration cross-coupling, and
+            micro-fault cascading mechanisms.</div>
         </div>
 
         <div class="research-paper-card">
           <div class="paper-title">4. Rotax 914 F Operators and Maintenance Propulsion Manual</div>
           <div class="paper-meta">BRP-Rotax GmbH & Co KG / DRDO Powerplant Reference Standard</div>
-          <div class="paper-desc">Thermodynamic boundaries for turbocharged aero piston engines: Max continuous CHT 135°C, Redline CHT 150°C, EGT 880°C, Cruise RPM 4,800–5,500.</div>
+          <div class="paper-desc">Thermodynamic boundaries for turbocharged aero piston engines: Max continuous CHT
+            135°C, Redline CHT 150°C, EGT 880°C, Cruise RPM 4,800–5,500.</div>
         </div>
       </div>
 
     </div>
   </div>
 
-  <script src="/static/engine_3d.js?v=20260909_09"></script>
-  <script src="/static/app.js?v=20260909_09"></script>
+  <script src="/static/engine_3d.js?v=20260910_01"></script>
+  <script src="/static/app.js?v=20260910_01"></script>
 </body>
+
 </html>

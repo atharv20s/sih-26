@@ -910,17 +910,9 @@ class AeroEngine3D {
       const oilP = (tel.oil_pressure && tel.oil_pressure > 0) ? tel.oil_pressure : 110.0;
       const oilTemp = tel.oil_temp || 96.4;
       const fuelFlow = tel.fuel_flow || 8.30;
-      if (tel.altitude !== undefined) this.altitude = tel.altitude;
-      else if (data.environment && data.environment.altitude !== undefined) this.altitude = data.environment.altitude;
-      const alt = this.altitude !== undefined ? this.altitude : 12500;
-
-      if (tel.ambient_temp !== undefined) this.ambientTemp = tel.ambient_temp;
-      else if (data.environment && data.environment.ambient_temp !== undefined) this.ambientTemp = data.environment.ambient_temp;
-      const ambTemp = this.ambientTemp !== undefined ? this.ambientTemp : 15.0;
-
-      if (tel.cooling_factor !== undefined) this.coolingFactor = tel.cooling_factor;
-      else if (data.environment && data.environment.cooling_factor !== undefined) this.coolingFactor = data.environment.cooling_factor;
-      const coolingFactor = this.coolingFactor !== undefined ? this.coolingFactor : 1.0;
+      const alt = tel.altitude !== undefined ? tel.altitude : 12500;
+      const ambTemp = tel.ambient_temp !== undefined ? tel.ambient_temp : 15.0;
+      const coolingFactor = tel.cooling_factor !== undefined ? tel.cooling_factor : 1.0;
 
       if (this.thermalUniforms) {
         this.thermalUniforms.uCht.value = this.cht;
@@ -932,8 +924,18 @@ class AeroEngine3D {
         // 1. Airframe Vibration Callout
         const vibColor = vib >= 3.5 ? '#f43f5e' : (vib >= 2.4 ? '#f59e0b' : '#38bdf8');
         const freqHz = Math.round(this.rpm / 60.0);
+        const currentRul = data.adjusted_rul || data.rul_cycles || 485.0;
+        let sustainTag = data.sustain_flight_str;
+        if (!sustainTag) {
+          const totH = currentRul * 0.1;
+          const h = Math.floor(totH);
+          const m = Math.round((totH - h) * 60);
+          sustainTag = `${h}h ${m.toString().padStart(2, '0')}m`;
+        }
+        const envelopeTag = currentRul < 50 ? `EMERGENCY RTB: ${sustainTag}` : `SUSTAIN: ${sustainTag}`;
+
         this.updateCalloutData('uav', [
-          `VIBRATION: ${vib.toFixed(2)} G (RMS)`,
+          `VIBRATION: ${vib.toFixed(2)} G (RMS) | ${envelopeTag}`,
           `FREQ: ${freqHz} Hz | AMB: ${ambTemp > 0 ? '+' : ''}${ambTemp.toFixed(1)}°C | ALT: ${Math.round(alt).toLocaleString()} ft`
         ], vibColor);
 
@@ -975,6 +977,26 @@ class AeroEngine3D {
     const estOilP = Math.max(120.0, 281.8 - (estOilTemp - 85.0) * 1.3 - (altFt / 10000.0) * 8.0);
     const estFuelFlow = Math.max(4.2, 8.30 * densityRatio);
 
+    // Compute dynamic physical Arrhenius & mechanical RUL
+    let estRul = 485.0;
+    if (estCht > 155.0) {
+      const excess = (estCht - 155.0) / 22.0;
+      estRul *= Math.max(0.028, Math.exp(-excess * 0.95));
+    }
+    if (estOilP < 220.0) {
+      const pLoss = Math.max(0.0, 220.0 - estOilP) / 120.0;
+      estRul *= Math.max(0.045, 1.0 - pLoss * 0.92);
+    }
+    if (estVib > 2.2) {
+      const vExcess = Math.max(0.0, estVib - 2.2) / 1.5;
+      estRul *= Math.max(0.05, 1.0 - vExcess * 0.88);
+    }
+    estRul = Math.max(12.0, Math.min(520.0, estRul));
+    const totH = estRul * 0.1;
+    const h = Math.floor(totH);
+    const m = Math.round((totH - h) * 60);
+    const estSustainStr = `${h}h ${m.toString().padStart(2, '0')}m`;
+
     this.updateTelemetryState({
       telemetry: {
         rpm: this.rpm,
@@ -987,7 +1009,9 @@ class AeroEngine3D {
         altitude: altFt,
         ambient_temp: ambC,
         cooling_factor: coolingFactor
-      }
+      },
+      adjusted_rul: estRul,
+      sustain_flight_str: estSustainStr
     });
   }
 

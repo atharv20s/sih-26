@@ -139,9 +139,21 @@ body::before {
 }
 
 @keyframes pulse {
-  0% { transform: scale(0.95); opacity: 0.8; }
-  50% { transform: scale(1.25); opacity: 1; box-shadow: 0 0 14px var(--accent-emerald); }
-  100% { transform: scale(0.95); opacity: 0.8; }
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+
+  50% {
+    transform: scale(1.25);
+    opacity: 1;
+    box-shadow: 0 0 14px var(--accent-emerald);
+  }
+
+  100% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
 }
 
 .header-btn {
@@ -222,42 +234,6 @@ body::before {
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
-}
-
-/* Atmospheric Flight Telemetry Strip */
-.telemetry-env-strip {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
-  margin-bottom: 8px;
-  padding: 5px 8px;
-  background: rgba(15, 23, 42, 0.75);
-  border: 1px solid rgba(56, 189, 248, 0.25);
-  border-radius: var(--radius-sm);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
-}
-
-.env-strip-chip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.chip-label {
-  font-size: 8.5px;
-  font-weight: 700;
-  color: var(--text-muted);
-  letter-spacing: 0.3px;
-}
-
-.chip-val {
-  font-size: 11px;
-  font-family: var(--font-mono);
-  font-weight: 800;
-  color: #38bdf8;
-  text-shadow: 0 0 8px rgba(56, 189, 248, 0.35);
-  white-space: nowrap;
 }
 
 .gauge-grid {
@@ -362,7 +338,6 @@ body::before {
   font-weight: 900;
   color: #34d399;
   text-shadow: 0 0 10px rgba(52, 211, 153, 0.45);
-  transition: color 0.4s ease, text-shadow 0.4s ease;
 }
 
 .comp-bar-bg {
@@ -377,7 +352,7 @@ body::before {
   height: 100%;
   border-radius: 3px;
   background: linear-gradient(90deg, #10b981, #34d399);
-  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1), background 0.5s ease;
+  transition: width 0.3s ease, background 0.3s ease;
 }
 
 .comp-bar-fill.warning {
@@ -400,7 +375,6 @@ body::before {
 .comp-metric {
   color: var(--accent-sky);
   font-weight: 600;
-  transition: color 0.3s ease;
 }
 
 .comp-condition {
@@ -412,7 +386,6 @@ body::before {
   border: 1px solid rgba(16, 185, 129, 0.4);
   font-size: 8.5px;
   letter-spacing: 0.3px;
-  transition: all 0.4s ease;
 }
 
 .comp-condition.warning {
@@ -487,7 +460,8 @@ body::before {
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
 }
 
-.vm-title, .mvm-title {
+.vm-title,
+.mvm-title {
   font-size: 11px;
   font-weight: 800;
   color: var(--accent-sky);
@@ -496,13 +470,15 @@ body::before {
   text-align: center;
 }
 
-.vm-btn-group, .mvm-btn-group {
+.vm-btn-group,
+.mvm-btn-group {
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
 
-.vm-btn, .mvm-btn {
+.vm-btn,
+.mvm-btn {
   background: rgba(15, 23, 42, 0.85);
   border: 1px solid rgba(56, 189, 248, 0.25);
   border-radius: 4px;
@@ -517,7 +493,10 @@ body::before {
   text-align: center;
 }
 
-.vm-btn:hover, .vm-btn.active, .mvm-btn:hover, .mvm-btn.active {
+.vm-btn:hover,
+.vm-btn.active,
+.mvm-btn:hover,
+.mvm-btn.active {
   background: rgba(56, 189, 248, 0.22);
   border-color: var(--accent-sky);
   color: #fff;
@@ -702,6 +681,31 @@ body::before {
   text-align: center;
   position: relative;
   box-shadow: inset 0 0 16px rgba(56, 189, 248, 0.1);
+  transition: all 0.4s ease;
+}
+
+.rul-hero-card.warning {
+  border-color: rgba(251, 191, 36, 0.6);
+  box-shadow: 0 0 14px rgba(251, 191, 36, 0.25), inset 0 0 16px rgba(251, 191, 36, 0.12);
+}
+
+.rul-hero-card.critical {
+  border-color: rgba(244, 63, 94, 0.75);
+  box-shadow: 0 0 18px rgba(244, 63, 94, 0.4), inset 0 0 16px rgba(244, 63, 94, 0.2);
+  animation: pulse-border 1.8s infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { border-color: rgba(244, 63, 94, 0.75); }
+  50% { border-color: rgba(239, 68, 68, 0.35); }
+}
+
+.rul-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 2px;
 }
 
 .rul-title {
@@ -710,6 +714,36 @@ body::before {
   text-transform: uppercase;
   letter-spacing: 0.8px;
   font-weight: 700;
+}
+
+.rul-status-pill {
+  font-size: 8px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  transition: all 0.3s ease;
+}
+
+.rul-status-pill.status-ok {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+}
+
+.rul-status-pill.status-warn {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+}
+
+.rul-status-pill.status-crit {
+  background: rgba(244, 63, 94, 0.25);
+  color: #f43f5e;
+  border: 1px solid rgba(244, 63, 94, 0.6);
+  text-shadow: 0 0 8px rgba(244, 63, 94, 0.6);
 }
 
 .rul-value-wrap {
@@ -727,6 +761,7 @@ body::before {
   text-shadow: 0 0 14px rgba(56, 189, 248, 0.6);
   letter-spacing: -0.5px;
   line-height: 1;
+  transition: color 0.3s ease;
 }
 
 .rul-unit {
@@ -734,6 +769,52 @@ body::before {
   font-weight: 700;
   color: var(--accent-sky);
   letter-spacing: 0.5px;
+}
+
+/* Flight Sustain Time Row */
+.rul-time-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin: 2px 0 3px;
+  padding: 2px 8px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 4px;
+  width: 100%;
+}
+
+.rul-time-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.3px;
+}
+
+.rul-time-val {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #38bdf8;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.35);
+  transition: all 0.3s ease;
+}
+
+.rul-time-val.warning {
+  color: #fbbf24;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+}
+
+.rul-time-val.critical {
+  color: #f43f5e;
+  text-shadow: 0 0 10px rgba(244, 63, 94, 0.6);
+}
+
+.rul-extension-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .rul-extension-tag {
@@ -745,6 +826,13 @@ body::before {
   padding: 1px 7px;
   border-radius: 10px;
   font-weight: 600;
+}
+
+.rul-time-ext {
+  font-size: 8.5px;
+  color: #34d399;
+  font-family: var(--font-mono);
+  font-weight: 700;
 }
 
 /* PINN & DRL Details Group */
@@ -1584,4 +1672,3 @@ body::before {
   accent-color: var(--accent-sky);
   cursor: pointer;
 }
-
