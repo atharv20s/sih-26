@@ -69,45 +69,45 @@
           <div class="sensor-gauge">
             <div class="gauge-header">
               <span class="gauge-name">Exhaust Gas Temp (EGT)</span>
-              <span class="gauge-val" id="val-egt">650.0 °C</span>
+              <span class="gauge-val" id="val-egt">667.7 °C</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-egt" style="width: 46%;"></div></div>
+            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-egt" style="width: 52%;"></div></div>
           </div>
 
           <!-- Oil Pressure -->
           <div class="sensor-gauge">
             <div class="gauge-header">
               <span class="gauge-name">Oil Pressure</span>
-              <span class="gauge-val" id="val-oil_pressure">320.0 kPa</span>
+              <span class="gauge-val" id="val-oil_pressure">281.8 kPa</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-oil_pressure" style="width: 63%;"></div></div>
+            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-oil_pressure" style="width: 50%;"></div></div>
           </div>
 
           <!-- Oil Temp -->
           <div class="sensor-gauge">
             <div class="gauge-header">
               <span class="gauge-name">Oil Temp</span>
-              <span class="gauge-val" id="val-oil_temp">85.0 °C</span>
+              <span class="gauge-val" id="val-oil_temp">96.4 °C</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-oil_temp" style="width: 35%;"></div></div>
+            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-oil_temp" style="width: 48%;"></div></div>
           </div>
 
           <!-- Vibration RMS -->
           <div class="sensor-gauge">
             <div class="gauge-header">
               <span class="gauge-name">Vibration RMS</span>
-              <span class="gauge-val" id="val-vibration_rms">1.20 g</span>
+              <span class="gauge-val" id="val-vibration_rms">1.41 g</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-vibration_rms" style="width: 17%;"></div></div>
+            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-vibration_rms" style="width: 32%;"></div></div>
           </div>
 
           <!-- Fuel Flow -->
           <div class="sensor-gauge">
             <div class="gauge-header">
               <span class="gauge-name">Fuel Flow Rate</span>
-              <span class="gauge-val" id="val-fuel_flow">9.50 L/h</span>
+              <span class="gauge-val" id="val-fuel_flow">8.30 L/h</span>
             </div>
-            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-fuel_flow" style="width: 39%;"></div></div>
+            <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-fuel_flow" style="width: 36%;"></div></div>
           </div>
 
           <!-- AFR -->
@@ -130,19 +130,19 @@
         <div class="component-matrix">
           <div class="comp-card">
             <span class="comp-name">Cylinder Head</span>
-            <span class="comp-status" id="comp-status-cylinder_head">98%</span>
+            <span class="comp-status" id="comp-status-cylinder_head" style="color:var(--accent-emerald);">100%</span>
           </div>
           <div class="comp-card">
             <span class="comp-name">Crankshaft / Bearing</span>
-            <span class="comp-status" id="comp-status-crankshaft">97%</span>
+            <span class="comp-status" id="comp-status-crankshaft" style="color:var(--accent-emerald);">91%</span>
           </div>
           <div class="comp-card">
             <span class="comp-name">Lubrication Loop</span>
-            <span class="comp-status" id="comp-status-lubrication_system">96%</span>
+            <span class="comp-status" id="comp-status-lubrication_system" style="color:var(--accent-emerald);">91%</span>
           </div>
           <div class="comp-card">
             <span class="comp-name">Exhaust Manifold</span>
-            <span class="comp-status" id="comp-status-exhaust_manifold">99%</span>
+            <span class="comp-status" id="comp-status-exhaust_manifold" style="color:var(--accent-emerald);">91%</span>
           </div>
         </div>
       </div>
@@ -153,19 +153,30 @@
       <div class="canvas-container" style="flex: 1; position: relative; min-height: 320px; overflow: hidden;">
         <canvas id="webgl-canvas"></canvas>
 
-        <!-- Floating 3D Controls -->
-        <div class="viewport-floating-controls">
-          <div class="viewport-toolbar">
-            <div class="slider-container">
-              <span>EXPLODED VIEW:</span>
-              <input type="range" id="exploded-slider" min="0" max="100" step="1" value="0">
-              <span id="exploded-val">0%</span>
-            </div>
-          </div>
+        <!-- Top-Left UAV Identifier Badge -->
+        <div class="viewport-uav-pill">TAPAS MALE UAV - AERO PROPULSION DIGITAL TWIN</div>
 
-          <div class="viewport-toolbar">
-            <button class="tool-btn active" id="btn-heatmap">GLSL THERMAL HEATMAP</button>
-            <button class="tool-btn" id="btn-reset-view">RESET CAMERA</button>
+        <!-- Top-Right View Manager Overlay (Feature from image_2.png) -->
+        <div class="viewport-view-manager">
+          <div class="vm-title">VIEW MANAGER</div>
+          <div class="vm-btn-group">
+            <button class="vm-btn active" data-view="overview">AIRCRAFT OVERVIEW</button>
+            <button class="vm-btn" data-view="propulsion">PROPULSION UNIT</button>
+            <button class="vm-btn" data-view="systems">SYSTEM DIAGRAMS</button>
+          </div>
+        </div>
+
+        <!-- Bottom-Left Propulsion Controls Overlay -->
+        <div class="viewport-propulsion-controls">
+          <div class="pc-title">PROPULSION CONTROLS</div>
+          <div class="pc-controls">
+            <div class="pc-slider-row">
+              <span class="pc-label">EXPLODED VIEW:</span>
+              <input type="range" id="exploded-slider" min="0" max="100" step="1" value="0">
+              <span id="exploded-val" class="pc-val">0%</span>
+            </div>
+            <button class="pc-btn active" id="btn-heatmap">GLSL HEATMAP</button>
+            <button class="pc-btn" id="btn-reset-view">RESET CAMERA</button>
           </div>
         </div>
 
@@ -184,73 +195,87 @@
 
       <!-- Mission Replay & Environmental Simulation Panel (Feature 3) -->
       <div class="mission-replay-panel" id="mission-replay-panel">
-        <div class="replay-header">
-          <div class="replay-title-wrap">
-            <span class="replay-icon">🎛️</span>
-            <span class="replay-title">Mission Replay & Environmental Simulation</span>
-            <span class="replay-badge">STANAG 4586 RECORDER</span>
-          </div>
-          <div class="replay-clock-wrap">
-            <span class="clock-label">MISSION ELAPSED TIME:</span>
-            <span class="replay-clock" id="replay-clock">T+00:42:15</span>
-          </div>
-        </div>
-
-        <!-- Row 1: Environmental & Atmospheric In-Situ Controls -->
-        <div class="env-controls-grid">
-          <div class="env-control-card">
-            <div class="env-card-header">
-              <span class="env-label">✈️ Altitude (Flight Ceiling)</span>
-              <span class="env-value" id="val-altitude">12,500 ft</span>
-            </div>
-            <input type="range" id="slider-altitude" min="0" max="20000" step="250" value="12500" class="env-slider">
-            <div class="env-meta-row">
-              <span id="env-density">Air Density: 0.812 kg/m³</span>
-              <span id="env-pressure">Pressure: 18.75 inHg</span>
-            </div>
-          </div>
-
-          <div class="env-control-card">
-            <div class="env-card-header">
-              <span class="env-label">🌡️ Ambient Air Temperature</span>
-              <span class="env-value" id="val-ambient-temp">+15.0 °C</span>
-            </div>
-            <input type="range" id="slider-ambient-temp" min="-40" max="50" step="1" value="15" class="env-slider temp-slider">
-            <div class="env-meta-row">
-              <span id="env-condition">Condition: ISA Standard Day</span>
-              <span id="env-convection">Cooling Factor: 1.00x</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Row 2: Timeline Scrubber & Replay Playback Controls -->
-        <div class="timeline-replay-bar">
-          <div class="playback-btn-group">
-            <button class="replay-btn" id="btn-replay-step-back" title="Rewind 10 seconds">⏮ -10s</button>
-            <button class="replay-btn play-btn" id="btn-replay-play" title="Play/Pause Replay">▶ PLAY</button>
-            <button class="replay-btn" id="btn-replay-step-fwd" title="Forward 10 seconds">⏭ +10s</button>
-            <select id="select-replay-speed" class="replay-speed-select">
-              <option value="0.5">0.5x</option>
-              <option value="1.0" selected>1.0x Real-Time</option>
-              <option value="2.0">2.0x Fast</option>
-              <option value="5.0">5.0x Warp</option>
-            </select>
-          </div>
-
-          <div class="scrubber-wrap">
-            <div class="scrubber-time-row">
-              <span id="scrubber-current-time">00:42:15</span>
-              <div class="mission-phases">
-                <span class="phase-pill" data-time="300">Taxi (5m)</span>
-                <span class="phase-pill" data-time="1500">Climb (25m)</span>
-                <span class="phase-pill active" data-time="2520">Cruise (42m)</span>
-                <span class="phase-pill alert" data-time="4500">Thermal Spike (75m)</span>
-                <span class="phase-pill green" data-time="5400">DRL De-Rate (90m)</span>
-                <span class="phase-pill" data-time="6300">RTB Touchdown</span>
+        <div style="display: flex; gap: 14px; align-items: stretch;">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+            <div class="replay-header">
+              <div class="replay-title-wrap">
+                <span class="replay-icon">🎛️</span>
+                <span class="replay-title">Mission Replay & Environmental Simulation</span>
+                <span class="replay-badge">STANAG 4586 RECORDER</span>
               </div>
-              <span>01:45:00</span>
+              <div class="replay-clock-wrap">
+                <span class="clock-label">MISSION ELAPSED TIME:</span>
+                <span class="replay-clock" id="replay-clock">T+00:42:15</span>
+              </div>
             </div>
-            <input type="range" id="replay-timeline" min="0" max="6300" step="1" value="2535" class="timeline-slider">
+
+            <!-- Row 1: Environmental & Atmospheric In-Situ Controls -->
+            <div class="env-controls-grid">
+              <div class="env-control-card">
+                <div class="env-card-header">
+                  <span class="env-label">✈️ Altitude (At Flight Ceiling)</span>
+                  <span class="env-value" id="val-altitude">12,500 ft</span>
+                </div>
+                <input type="range" id="slider-altitude" min="0" max="20000" step="250" value="12500" class="env-slider">
+                <div class="env-meta-row">
+                  <span id="env-density">Air Density: 0.812 kg/m³</span>
+                  <span id="env-pressure">Pressure: 18.75 inHg</span>
+                </div>
+              </div>
+
+              <div class="env-control-card">
+                <div class="env-card-header">
+                  <span class="env-label">🌡️ Ambient Temp Temperature</span>
+                  <span class="env-value" id="val-ambient-temp">+15.0 °C</span>
+                </div>
+                <input type="range" id="slider-ambient-temp" min="-40" max="50" step="1" value="15" class="env-slider temp-slider">
+                <div class="env-meta-row">
+                  <span id="env-condition">Condition: ISA Standard Day</span>
+                  <span id="env-convection">Cooling Factor: 1.00x</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Row 2: Timeline Scrubber & Replay Playback Controls -->
+            <div class="timeline-replay-bar">
+              <div class="playback-btn-group">
+                <button class="replay-btn" id="btn-replay-step-back" title="Rewind 10 seconds">⏮ -10s</button>
+                <button class="replay-btn play-btn" id="btn-replay-play" title="Play/Pause Replay">▶ PLAY</button>
+                <button class="replay-btn" id="btn-replay-step-fwd" title="Forward 10 seconds">⏭ +10s</button>
+                <select id="select-replay-speed" class="replay-speed-select">
+                  <option value="0.5">0.5x</option>
+                  <option value="1.0" selected>1.0x Real-Time</option>
+                  <option value="2.0">2.0x Fast</option>
+                  <option value="5.0">5.0x Warp</option>
+                </select>
+              </div>
+
+              <div class="scrubber-wrap">
+                <div class="scrubber-time-row">
+                  <span id="scrubber-current-time">00:42:15</span>
+                  <div class="mission-phases">
+                    <span class="phase-pill" data-time="300">Taxi (5m)</span>
+                    <span class="phase-pill" data-time="1500">Climb (25m)</span>
+                    <span class="phase-pill active" data-time="2520">Cruise (42m)</span>
+                    <span class="phase-pill alert" data-time="4500">Thermal Spike (75m)</span>
+                    <span class="phase-pill green" data-time="5400">DRL De-Rate (90m)</span>
+                    <span class="phase-pill" data-time="6300">RTB Touchdown</span>
+                  </div>
+                  <span>01:45:00</span>
+                </div>
+                <input type="range" id="replay-timeline" min="0" max="6300" step="1" value="2535" class="timeline-slider">
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom-Right View Manager Panel (matching image_2.png) -->
+          <div class="mission-view-manager">
+            <div class="mvm-title">VIEW MANAGER</div>
+            <div class="mvm-btn-group">
+              <button class="mvm-btn active" data-view="overview">AIRCRAFT OVERVIEW</button>
+              <button class="mvm-btn" data-view="propulsion">PROPULSION UNIT</button>
+              <button class="mvm-btn" data-view="systems">SYSTEM DIAGRAMS</button>
+            </div>
           </div>
         </div>
       </div>
@@ -269,16 +294,16 @@
         <div class="rul-hero-card">
           <span class="rul-title">Remaining Useful Life (RUL)</span>
           <div class="rul-value-wrap">
-            <span class="rul-number" id="rul-number">380</span>
+            <span class="rul-number" id="rul-number">494</span>
             <span class="rul-unit">CYCLES</span>
           </div>
-          <span class="rul-extension-tag" id="rul-extension">Nominal Cruise</span>
+          <span class="rul-extension-tag" id="rul-extension">+15.0 cyc (DRL Protected)</span>
         </div>
 
         <div style="margin-top: 10px;">
           <div class="ai-detail-row">
             <span class="ai-detail-label">Fourier Energy Residual:</span>
-            <span class="ai-detail-val" id="fourier-residual">0.042 °C</span>
+            <span class="ai-detail-val" id="fourier-residual">0.239 °C</span>
           </div>
           <div class="ai-detail-row">
             <span class="ai-detail-label">Physical Thermal Gradient (dT/dt):</span>
@@ -295,38 +320,38 @@
       <div class="hud-panel">
         <div class="panel-title">
           <span>Fault Archetype Classifier</span>
-          <span class="panel-badge" id="fault-conf">92% CONF</span>
+          <span class="panel-badge" id="fault-conf">100% CONF</span>
         </div>
-        <div style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 6px;" id="fault-name">NOMINAL CRUISE</div>
+        <div style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 6px;" id="fault-name">OIL STARVATION</div>
 
         <div class="fault-meter-list">
           <div class="fault-meter-row">
             <div class="fault-meter-header">
               <span class="fault-tag">Cylinder Head Overheat (CHT)</span>
-              <span class="fault-pct" id="fault-pct-cht_over">5%</span>
+              <span class="fault-pct" id="fault-pct-cht_over">0%</span>
             </div>
-            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-cht_over" style="width: 5%; background: var(--accent-amber);"></div></div>
+            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-cht_over" style="width: 0%; background: var(--accent-amber);"></div></div>
           </div>
           <div class="fault-meter-row">
             <div class="fault-meter-header">
               <span class="fault-tag">Bearing Vibration Fatigue</span>
-              <span class="fault-pct" id="fault-pct-vibration_over">4%</span>
+              <span class="fault-pct" id="fault-pct-vibration_over">0%</span>
             </div>
-            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-vibration_over" style="width: 4%; background: var(--accent-rose);"></div></div>
+            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-vibration_over" style="width: 0%; background: var(--accent-rose);"></div></div>
           </div>
           <div class="fault-meter-row">
             <div class="fault-meter-header">
               <span class="fault-tag">Oil Starvation Cavitation</span>
-              <span class="fault-pct" id="fault-pct-oil_starvation">3%</span>
+              <span class="fault-pct" id="fault-pct-oil_starvation">100%</span>
             </div>
-            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-oil_starvation" style="width: 3%; background: #a855f7;"></div></div>
+            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-oil_starvation" style="width: 100%; background: #c084fc; box-shadow: 0 0 10px #c084fc;"></div></div>
           </div>
           <div class="fault-meter-row">
             <div class="fault-meter-header">
               <span class="fault-tag">Exhaust Thermal Surge (EGT)</span>
-              <span class="fault-pct" id="fault-pct-egt_over">2%</span>
+              <span class="fault-pct" id="fault-pct-egt_over">0%</span>
             </div>
-            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-egt_over" style="width: 2%; background: #f97316;"></div></div>
+            <div class="fault-bar-bg"><div class="fault-bar-fill" id="fault-bar-egt_over" style="width: 0%; background: #f97316;"></div></div>
           </div>
         </div>
       </div>
@@ -342,7 +367,7 @@
             <span>🛡️ CLOSED-LOOP POLICY ADVICE</span>
           </div>
           <div class="drl-action-text" id="drl-text">
-            Operating within nominal cruise limits. No thermal de-rate necessary.
+            Maintain nominal cruise throttle
           </div>
           <div class="pinn-shield-badge" id="drl-shield-badge" style="display: none;">
             <span>⚠️ PINN SAFETY SHIELD ENGAGED</span>
@@ -362,7 +387,7 @@
         </div>
         <div class="ai-detail-row">
           <span class="ai-detail-label">Automated Edge Self-Corrections:</span>
-          <span class="ai-detail-val" id="audit-recoveries" style="color:var(--accent-sky);">0</span>
+          <span class="ai-detail-val" id="audit-recoveries" style="color:var(--accent-sky);">6110</span>
         </div>
       </div>
 

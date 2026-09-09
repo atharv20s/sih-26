@@ -44,15 +44,15 @@ class SimulationController:
         self.cycle = 0
         self.throttle = 0.72
         self.mixture = 13.8
-        self.rpm = 4800.0
-        self.cht = 150.0
-        self.egt = 650.0
-        self.oil_temp = 85.0
-        self.oil_pressure = 320.0
-        self.fuel_flow = 9.5
-        self.vibration_rms = 1.2
+        self.rpm = 4535.4
+        self.cht = 148.6
+        self.egt = 667.7
+        self.oil_temp = 96.4
+        self.oil_pressure = 281.8
+        self.fuel_flow = 8.30
+        self.vibration_rms = 1.41
         self.map_kpa = 92.0
-        self.coolant_temp = 78.0
+        self.coolant_temp = 82.0
         self.injected_fault: Optional[str] = None
         self.health = 1.0
         self.is_paused = False
@@ -64,18 +64,18 @@ class SimulationController:
         self.cycle += 1
         noise = lambda scale: float(np.random.normal(0, scale))
 
-        # Base nominal walk
-        self.rpm = 4800.0 + (self.throttle - 0.72) * 1200.0 + noise(15.0)
-        self.fuel_flow = 9.5 + (self.throttle - 0.72) * 6.0 + noise(0.1)
+        # Base nominal walk centered around 4535.4 RPM TAPAS cruise
+        self.rpm = 4535.4 + (self.throttle - 0.72) * 1200.0 + noise(10.0)
+        self.fuel_flow = 8.30 + (self.throttle - 0.72) * 6.0 + noise(0.08)
 
         # Baseline thermal and mechanical calculations
-        base_cht = 150.0 + (self.throttle - 0.72) * 40.0 + (13.8 - self.mixture) * 6.0
-        base_egt = 650.0 + (self.throttle - 0.72) * 90.0 + (self.mixture - 13.8) * 15.0
-        base_vib = 1.20 + (self.throttle - 0.72) * 0.80
-        base_oil_p = 320.0 - (self.oil_temp - 85.0) * 1.5
+        base_cht = 148.6 + (self.throttle - 0.72) * 35.0 + (13.8 - self.mixture) * 5.0
+        base_egt = 667.7 + (self.throttle - 0.72) * 80.0 + (self.mixture - 13.8) * 12.0
+        base_vib = 1.41 + (self.throttle - 0.72) * 0.70
+        base_oil_p = 281.8 - (self.oil_temp - 96.4) * 1.2
 
         # Gradual degradation
-        self.health = max(0.05, 1.0 - (self.cycle * 0.0015))
+        self.health = max(0.05, 1.0 - (self.cycle * 0.0012))
         deg_factor = (1.0 - self.health)
 
         # Apply specific injected fault or natural degradation

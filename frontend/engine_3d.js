@@ -1,12 +1,14 @@
 /**
- * SIH26054 3D Aero Piston Engine Digital Twin Viewport (Three.js + GLSL)
+ * SIH26054 3D Command & Control Visualization Hub (Three.js + GLSL)
  *
  * Implements:
- *   - Procedural aero piston engine CAD assembly (Cylinder Head, Block, Piston, Conrod, Crankshaft, Exhaust)
- *   - Slider-crank reciprocating kinematic animation synchronized to live RPM
- *   - Custom GLSL Volumetric Thermal Heatmap Shader (CHT & EGT gradient mapping)
- *   - Dynamic Exploded Assembly Slider (0-100%) with internal degradation visualization
- *   - Wear marks on Piston Crown, Journal Bearings, Cylinder Walls
+ *   1. Complete TAPAS-BH-201 MALE UAV Airframe in semi-transparent X-Ray style
+ *      with internal avionics, wiring harness, twin tail booms, and pusher propeller.
+ *   2. Detailed 4-Cylinder Aero Piston Engine (Rotax 914 F) with GLSL thermal heatmap.
+ *   3. Textured 3D ALT/BATTERY PACK with charge indicator (100%).
+ *   4. Schematic animated 3D FUEL & OIL SYSTEM LOOP with circulating fluid particles.
+ *   5. Pinned 3D dynamic data overlays (Airframe Vibration, RPM/CHT/EGT, Battery Charge).
+ *   6. View Manager camera focus modes: AIRCRAFT OVERVIEW, PROPULSION UNIT, SYSTEM DIAGRAMS.
  */
 
 class AeroEngine3D {
@@ -14,21 +16,30 @@ class AeroEngine3D {
     this.canvas = document.getElementById(canvasId);
     this.explodedFactor = 0.0;
     this.crankAngle = 0.0;
-    this.rpm = 4800.0;
-    this.cht = 148.9;   // Default live CAN-bus CHT: 148.9°C
-    this.egt = 666.1;   // Default live CAN-bus EGT: 666.1°C
+    this.propellerAngle = 0.0;
+    this.rpm = 4535.4;
+    this.cht = 148.6;
+    this.egt = 667.7;
     this.heatmapEnabled = true;
     this.clock = new THREE.Clock();
+    this.viewMode = 'overview';
 
     this.parts = {};
     this.initialPositions = {};
-    this.degradationMarkers = [];
+    this.fluidParticles = [];
+    this.calloutSprites = [];
+
+    this.targetCameraPos = new THREE.Vector3(0, 3.2, 6.8);
+    this.targetLookAt = new THREE.Vector3(0, 0.1, 0);
 
     this.initScene();
     this.initThermalShaders();
+    this.buildTapasAirframe();
     this.buildEngineAssembly();
+    this.buildBatteryPack();
+    this.buildFuelOilLoop();
     this.setupLighting();
-    this.setupDegradationCallouts();
+    this.setupPinnedCallouts();
     this.animate();
 
     window.addEventListener('resize', () => this.onResize());
@@ -36,13 +47,13 @@ class AeroEngine3D {
 
   initScene() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x070b14);
+    this.scene.background = new THREE.Color(0x060911);
 
-    const width = this.canvas.clientWidth || 800;
-    const height = this.canvas.clientHeight || 500;
+    const width = this.canvas.clientWidth || 900;
+    const height = this.canvas.clientHeight || 550;
 
     this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-    this.camera.position.set(3.8, 2.6, 4.8);
+    this.camera.position.copy(this.targetCameraPos);
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -54,18 +65,17 @@ class AeroEngine3D {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.25;
+    this.renderer.toneMappingExposure = 1.3;
 
     this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.05;
-    this.controls.target.set(0, 0.4, 0);
-    this.controls.maxDistance = 14;
-    this.controls.minDistance = 1.5;
+    this.controls.target.copy(this.targetLookAt);
+    this.controls.maxDistance = 16;
+    this.controls.minDistance = 1.2;
   }
 
   initThermalShaders() {
-    // Custom GLSL Volumetric Thermal Shader for CHT & EGT
     const vertexShader = `
       varying vec3 vPosition;
       varying vec3 vNormal;
@@ -83,21 +93,20 @@ class AeroEngine3D {
     `;
 
     const fragmentShader = `
-      uniform float uCht;              // Cylinder Head Temp in °C (e.g. 148.9)
-      uniform float uEgt;              // Exhaust Gas Temp in °C (e.g. 666.1)
-      uniform float uHeatmapEnabled;  // 1.0 = on, 0.0 = off
+      uniform float uCht;              // Cylinder Head Temp in °C (148.6)
+      uniform float uEgt;              // Exhaust Gas Temp in °C (667.7)
+      uniform float uHeatmapEnabled;
       uniform float uTime;
-      uniform int uPartType;          // 0 = Head, 1 = Block/Fins, 2 = Exhaust
+      uniform int uPartType;
 
       varying vec3 vPosition;
       varying vec3 vNormal;
       varying vec2 vUv;
       varying vec3 vWorldPosition;
 
-      // Smooth multi-stage volumetric thermal colormap: Blue -> Cyan -> Green -> Amber -> Orange -> Crimson -> White-Hot
       vec3 getThermalColor(float t) {
         t = clamp(t, 0.0, 1.0);
-        vec3 c0 = vec3(0.06, 0.22, 0.72); // Blue (Cold/Sump ~70°C)
+        vec3 c0 = vec3(0.06, 0.22, 0.72); // Blue (Sump ~70°C)
         vec3 c1 = vec3(0.08, 0.65, 0.88); // Cyan (~100°C)
         vec3 c2 = vec3(0.12, 0.82, 0.38); // Green (~130°C Nominal)
         vec3 c3 = vec3(0.96, 0.82, 0.12); // Yellow/Amber (~150°C CHT)
@@ -121,33 +130,26 @@ class AeroEngine3D {
         rim = pow(rim, 3.0) * 0.4;
 
         if (uHeatmapEnabled > 0.5) {
-          float localTemp = 80.0;
+          float localTemp = 85.0;
 
           if (uPartType == 0) {
-            // Cylinder Head: heavily governed by CHT with hot core center
             float radial = clamp(length(vPosition.xz) / 0.85, 0.0, 1.0);
-            localTemp = uCht + (1.0 - radial) * 15.0;
+            localTemp = uCht + (1.0 - radial) * 16.0;
           } else if (uPartType == 1) {
-            // Cylinder Block: temperature rises with height towards combustion chamber
             float hFactor = clamp((vPosition.y + 0.7) / 1.4, 0.0, 1.0);
             localTemp = 85.0 + hFactor * (uCht - 85.0);
           } else if (uPartType == 2) {
-            // Exhaust Manifold: governed by EGT with combustion gas pulse
             float pulse = sin(uTime * 5.0 + vPosition.x * 4.0) * 8.0;
-            localTemp = uEgt * 0.35 + pulse; // scaled for thermal visualization
+            localTemp = uEgt * 0.35 + pulse;
           }
 
-          // Normalize: 60°C = 0.0, 220°C = 1.0
           float normT = clamp((localTemp - 60.0) / 160.0, 0.0, 1.0);
           vec3 heatColor = getThermalColor(normT);
-
-          // Emissive glow for extreme heat (>180°C CHT or hot exhaust)
           float glow = smoothstep(0.65, 1.0, normT);
           vec3 emissive = heatColor * glow * 0.75;
 
           gl_FragColor = vec4(heatColor * diff + emissive + rim * vec3(0.3, 0.6, 1.0), 1.0);
         } else {
-          // Standard aerospace metal
           vec3 baseColor = (uPartType == 0) ? vec3(0.65, 0.70, 0.75) :
                            (uPartType == 1) ? vec3(0.40, 0.46, 0.54) : vec3(0.35, 0.40, 0.45);
           gl_FragColor = vec4(baseColor * diff + rim * 0.35, 1.0);
@@ -164,329 +166,676 @@ class AeroEngine3D {
     };
 
     this.createThermalMaterial = (partType) => {
-      const uniforms = {
-        uCht: this.thermalUniforms.uCht,
-        uEgt: this.thermalUniforms.uEgt,
-        uHeatmapEnabled: this.thermalUniforms.uHeatmapEnabled,
-        uTime: this.thermalUniforms.uTime,
-        uPartType: { value: partType }
-      };
       return new THREE.ShaderMaterial({
         vertexShader,
         fragmentShader,
-        uniforms,
+        uniforms: {
+          uCht: this.thermalUniforms.uCht,
+          uEgt: this.thermalUniforms.uEgt,
+          uHeatmapEnabled: this.thermalUniforms.uHeatmapEnabled,
+          uTime: this.thermalUniforms.uTime,
+          uPartType: { value: partType }
+        },
         side: THREE.DoubleSide
       });
     };
   }
 
   setupLighting() {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     this.scene.add(ambientLight);
 
-    const mainLight = new THREE.DirectionalLight(0x38bdf8, 2.0);
-    mainLight.position.set(5, 8, 4);
+    const mainLight = new THREE.DirectionalLight(0x38bdf8, 2.2);
+    mainLight.position.set(6, 10, 5);
     mainLight.castShadow = true;
     this.scene.add(mainLight);
 
-    const rimLight = new THREE.DirectionalLight(0x06b6d4, 1.2);
-    rimLight.position.set(-5, 4, -4);
+    const rimLight = new THREE.DirectionalLight(0x06b6d4, 1.4);
+    rimLight.position.set(-6, 5, -5);
     this.scene.add(rimLight);
 
-    this.thermalPointLight = new THREE.PointLight(0xf59e0b, 1.8, 7);
-    this.thermalPointLight.position.set(0, 1.3, 0);
+    // Warm underside glow for engine and fluid loops
+    this.thermalPointLight = new THREE.PointLight(0xf59e0b, 2.0, 8);
+    this.thermalPointLight.position.set(-0.8, 0.4, 0.8);
     this.scene.add(this.thermalPointLight);
 
-    const gridHelper = new THREE.GridHelper(10, 20, 0x0284c7, 0x1e293b);
+    // Grid Floor
+    const gridHelper = new THREE.GridHelper(14, 28, 0x0284c7, 0x1e293b);
     gridHelper.position.y = -1.6;
     this.scene.add(gridHelper);
   }
 
-  buildEngineAssembly() {
-    this.engineGroup = new THREE.Group();
-    this.scene.add(this.engineGroup);
+  // -------------------------------------------------------------------------
+  // 1. Semi-Transparent X-Ray TAPAS MALE UAV Airframe
+  // -------------------------------------------------------------------------
+  buildTapasAirframe() {
+    this.uavGroup = new THREE.Group();
+    this.uavGroup.position.set(0.1, 0.95, -0.6);
+    this.uavGroup.rotation.y = -0.32;
+    this.scene.add(this.uavGroup);
 
-    // Standard structural materials
-    const metalMat = new THREE.MeshStandardMaterial({
-      color: 0x64748b,
-      metalness: 0.85,
-      roughness: 0.25
-    });
-
-    const darkSteelMat = new THREE.MeshStandardMaterial({
-      color: 0x243042,
-      metalness: 0.92,
-      roughness: 0.28
-    });
-
-    // 1. Crankcase / Oil Sump (Base)
-    const crankcaseGeo = new THREE.BoxGeometry(1.6, 1.1, 1.8);
-    this.parts.crankcase = new THREE.Mesh(crankcaseGeo, darkSteelMat);
-    this.parts.crankcase.position.set(0, -0.9, 0);
-    this.engineGroup.add(this.parts.crankcase);
-
-    // Internal oil gallery sump inspection plane inside crankcase
-    const sumpInspectionGeo = new THREE.PlaneGeometry(1.4, 1.5);
-    const sumpInspectionMat = new THREE.MeshStandardMaterial({
-      color: 0x78350f, // oil varnish / sludge degradation
-      roughness: 0.8,
-      metalness: 0.1,
+    // Translucent X-ray fuselage material
+    const xrayMat = new THREE.MeshPhysicalMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.32,
+      roughness: 0.12,
+      metalness: 0.88,
+      transmission: 0.72,
+      ior: 1.25,
       side: THREE.DoubleSide
     });
-    const sumpPlane = new THREE.Mesh(sumpInspectionGeo, sumpInspectionMat);
-    sumpPlane.rotation.x = Math.PI / 2;
-    sumpPlane.position.y = 0.52;
-    this.parts.crankcase.add(sumpPlane);
 
-    // 2. Cylinder Block with Cooling Fins (Equipped with Thermal GLSL Shader)
-    const blockGroup = new THREE.Group();
-    const cylinderGeo = new THREE.CylinderGeometry(0.7, 0.7, 1.4, 32);
-    this.blockShaderMat = this.createThermalMaterial(1);
-    const cylinderMesh = new THREE.Mesh(cylinderGeo, this.blockShaderMat);
-    blockGroup.add(cylinderMesh);
+    const wireMat = new THREE.MeshBasicMaterial({
+      color: 0x0ea5e9,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.25
+    });
 
-    // Add 6 radial cooling fin discs
-    for (let i = 0; i < 6; i++) {
-      const finGeo = new THREE.CylinderGeometry(0.95 - (i * 0.03), 0.95 - (i * 0.03), 0.04, 32);
-      const finMesh = new THREE.Mesh(finGeo, this.blockShaderMat);
-      finMesh.position.y = -0.5 + i * 0.2;
-      blockGroup.add(finMesh);
+    // Aerodynamic TAPAS BH-201 Fuselage Body Curve
+    const bodyCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-3.2, 0.05, 0),    // FLIR Sensor Pod Chin
+      new THREE.Vector3(-2.4, 0.28, 0),    // Forward Radome Transition
+      new THREE.Vector3(-1.6, 0.42, 0),    // SATCOM Bulbous Upper Bulge
+      new THREE.Vector3(0.0, 0.32, 0),     // Mid Fuselage Payload/Fuel Bay
+      new THREE.Vector3(1.6, 0.22, 0),     // Aft Engine Bay
+      new THREE.Vector3(2.4, 0.08, 0)      // Pusher Propeller Mount
+    ]);
+    const bodyGeo = new THREE.TubeGeometry(bodyCurve, 40, 0.42, 20, false);
+    const bodyMesh = new THREE.Mesh(bodyGeo, xrayMat);
+    const bodyWire = new THREE.Mesh(bodyGeo, wireMat);
+    this.uavGroup.add(bodyMesh);
+    this.uavGroup.add(bodyWire);
+
+    // Forward EO/FLIR Turret Ball under nose
+    const flirTurret = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 16, 16),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.9, roughness: 0.2 })
+    );
+    flirTurret.position.set(-2.8, -0.18, 0);
+    this.uavGroup.add(flirTurret);
+
+    // Internal Avionics Stack & Glowing Telemetry Modules
+    const avionicsGroup = new THREE.Group();
+    const rackGeo = new THREE.BoxGeometry(0.9, 0.24, 0.28);
+    const rackMat = new THREE.MeshStandardMaterial({
+      color: 0x10b981,
+      emissive: 0x059669,
+      emissiveIntensity: 0.5
+    });
+    const avionicsRack = new THREE.Mesh(rackGeo, rackMat);
+    avionicsRack.position.set(-1.1, 0.26, 0);
+    avionicsGroup.add(avionicsRack);
+
+    // Glowing telemetry LED modules
+    for (let i = 0; i < 4; i++) {
+      const ledGeo = new THREE.BoxGeometry(0.12, 0.12, 0.05);
+      const ledMat = new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x06b6d4 : 0xec4899 });
+      const led = new THREE.Mesh(ledGeo, ledMat);
+      led.position.set(-1.4 + i * 0.2, 0.32, 0.14);
+      avionicsGroup.add(led);
     }
-    blockGroup.position.set(0, 0.4, 0);
-    this.parts.cylinderBlock = blockGroup;
-    this.engineGroup.add(this.parts.cylinderBlock);
 
-    // 3. Cylinder Head (Thermal Monitoring Core with CHT GLSL Shader)
-    const headGeo = new THREE.CylinderGeometry(0.85, 0.75, 0.5, 32);
+    // Mid-Fuselage Internal Fuel Cell (Yellow/Amber glow)
+    const fuelTankGeo = new THREE.CylinderGeometry(0.24, 0.24, 1.1, 16);
+    const fuelTankMat = new THREE.MeshStandardMaterial({
+      color: 0xf59e0b,
+      emissive: 0xd97706,
+      emissiveIntensity: 0.35,
+      transparent: true,
+      opacity: 0.7
+    });
+    const fuelTank = new THREE.Mesh(fuelTankGeo, fuelTankMat);
+    fuelTank.rotation.z = Math.PI / 2;
+    fuelTank.position.set(0.3, 0.25, 0);
+    avionicsGroup.add(fuelTank);
+
+    // Golden Wiring Harness along fuselage spine
+    const wireHarnessGeo = new THREE.CylinderGeometry(0.02, 0.02, 3.4, 8);
+    const harnessMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+    const harness1 = new THREE.Mesh(wireHarnessGeo, harnessMat);
+    harness1.rotation.z = Math.PI / 2;
+    harness1.position.set(-0.2, 0.38, 0.08);
+    avionicsGroup.add(harness1);
+
+    this.uavGroup.add(avionicsGroup);
+
+    // High-Aspect Ratio Wings with Dihedral and Winglets
+    const wingShape = new THREE.Shape();
+    wingShape.moveTo(-0.35, 0);
+    wingShape.lineTo(0.35, 0);
+    wingShape.lineTo(0.14, 4.6);
+    wingShape.lineTo(-0.16, 4.6);
+    wingShape.closePath();
+
+    const wingExtrudeSettings = { depth: 0.05, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: 0.02, bevelThickness: 0.02 };
+    const wingGeo = new THREE.ExtrudeGeometry(wingShape, wingExtrudeSettings);
+
+    // Left Wing
+    const leftWing = new THREE.Mesh(wingGeo, xrayMat);
+    leftWing.rotation.x = Math.PI / 2;
+    leftWing.rotation.y = -0.04;
+    leftWing.position.set(-0.1, 0.38, 0);
+    this.uavGroup.add(leftWing);
+
+    // Right Wing
+    const rightWing = new THREE.Mesh(wingGeo, xrayMat);
+    rightWing.rotation.x = -Math.PI / 2;
+    rightWing.rotation.y = 0.04;
+    rightWing.position.set(-0.1, 0.38, 0);
+    this.uavGroup.add(rightWing);
+
+    // Winglets
+    const wingletGeo = new THREE.BoxGeometry(0.18, 0.45, 0.03);
+    const leftWinglet = new THREE.Mesh(wingletGeo, xrayMat);
+    leftWinglet.position.set(-0.05, 0.58, 4.6);
+    leftWinglet.rotation.x = 0.25;
+    this.uavGroup.add(leftWinglet);
+
+    const rightWinglet = new THREE.Mesh(wingletGeo, xrayMat);
+    rightWinglet.position.set(-0.05, 0.58, -4.6);
+    rightWinglet.rotation.x = -0.25;
+    this.uavGroup.add(rightWinglet);
+
+    // Twin Tail Booms & Inverted V-Tail
+    const boomGeo = new THREE.CylinderGeometry(0.048, 0.04, 2.8, 12);
+    const boomMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.85 });
+
+    const leftBoom = new THREE.Mesh(boomGeo, boomMat);
+    leftBoom.rotation.z = Math.PI / 2;
+    leftBoom.position.set(1.3, 0.26, 1.1);
+    this.uavGroup.add(leftBoom);
+
+    const rightBoom = new THREE.Mesh(boomGeo, boomMat);
+    rightBoom.rotation.z = Math.PI / 2;
+    rightBoom.position.set(1.3, 0.26, -1.1);
+    this.uavGroup.add(rightBoom);
+
+    // V-Tail Fins
+    const finGeo = new THREE.BoxGeometry(0.42, 0.78, 0.03);
+    const leftFin = new THREE.Mesh(finGeo, xrayMat);
+    leftFin.rotation.x = 0.52;
+    leftFin.position.set(2.65, 0.52, 1.1);
+    this.uavGroup.add(leftFin);
+
+    const rightFin = new THREE.Mesh(finGeo, xrayMat);
+    rightFin.rotation.x = -0.52;
+    rightFin.position.set(2.65, 0.52, -1.1);
+    this.uavGroup.add(rightFin);
+
+    // Stabilizer crossbar
+    const crossbar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.2, 8), boomMat);
+    crossbar.rotation.x = Math.PI / 2;
+    crossbar.position.set(2.65, 0.52, 0);
+    this.uavGroup.add(crossbar);
+
+    // Pusher Propeller at Tail
+    this.propellerGroup = new THREE.Group();
+    const hubGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.14, 16);
+    const hubMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9 });
+    const hub = new THREE.Mesh(hubGeo, hubMat);
+    hub.rotation.z = Math.PI / 2;
+    this.propellerGroup.add(hub);
+
+    const bladeGeo = new THREE.BoxGeometry(0.04, 0.85, 0.09);
+    const bladeMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.95 });
+    for (let b = 0; b < 3; b++) {
+      const blade = new THREE.Mesh(bladeGeo, bladeMat);
+      blade.rotation.x = (b * Math.PI * 2) / 3;
+      blade.position.y = Math.cos((b * Math.PI * 2) / 3) * 0.42;
+      blade.position.z = Math.sin((b * Math.PI * 2) / 3) * 0.42;
+      this.propellerGroup.add(blade);
+    }
+    this.propellerGroup.position.set(2.45, 0.08, 0);
+    this.uavGroup.add(this.propellerGroup);
+
+    // Landing Gear (Tricycle)
+    const strutMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.9 });
+    const wheelGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.09, 16);
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.95 });
+
+    // Nose gear
+    const noseStrut = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.55, 8), strutMat);
+    noseStrut.position.set(-2.0, -0.22, 0);
+    const noseWheel = new THREE.Mesh(wheelGeo, wheelMat);
+    noseWheel.rotation.x = Math.PI / 2;
+    noseWheel.position.y = -0.28;
+    noseStrut.add(noseWheel);
+    this.uavGroup.add(noseStrut);
+
+    // Main gear (left and right under booms)
+    const mainGearL = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.55, 8), strutMat);
+    mainGearL.position.set(0.4, -0.22, 1.1);
+    const wheelL = new THREE.Mesh(wheelGeo, wheelMat);
+    wheelL.rotation.x = Math.PI / 2;
+    wheelL.position.y = -0.28;
+    mainGearL.add(wheelL);
+    this.uavGroup.add(mainGearL);
+
+    const mainGearR = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.55, 8), strutMat);
+    mainGearR.position.set(0.4, -0.22, -1.1);
+    const wheelR = new THREE.Mesh(wheelGeo, wheelMat);
+    wheelR.rotation.x = Math.PI / 2;
+    wheelR.position.y = -0.28;
+    mainGearR.add(wheelR);
+    this.uavGroup.add(mainGearR);
+  }
+
+  // -------------------------------------------------------------------------
+  // 2. Detailed 4-Cylinder Aero Piston Engine (Rotax 914 F Boxer)
+  // -------------------------------------------------------------------------
+  buildEngineAssembly() {
+    this.engineGroup = new THREE.Group();
+    this.engineGroup.position.set(-0.85, -0.45, 0.95);
+    this.engineGroup.scale.set(0.72, 0.72, 0.72);
+    this.engineGroup.rotation.y = 0.35;
+    this.scene.add(this.engineGroup);
+
+    const metalMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.88, roughness: 0.25 });
+    const darkSteelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.92, roughness: 0.3 });
+
+    // 1. Central Crankcase Block
+    const crankcaseGeo = new THREE.BoxGeometry(1.2, 1.0, 1.5);
+    this.parts.crankcase = new THREE.Mesh(crankcaseGeo, darkSteelMat);
+    this.parts.crankcase.position.set(0, -0.2, 0);
+    this.engineGroup.add(this.parts.crankcase);
+
+    // Front accessory gearbox and drive pulley
+    const pulleyGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.15, 24);
+    const pulleyMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.95 });
+    const pulley = new THREE.Mesh(pulleyGeo, pulleyMat);
+    pulley.rotation.x = Math.PI / 2;
+    pulley.position.set(0, -0.15, 0.82);
+    this.parts.crankcase.add(pulley);
+
+    // Alternator belt
+    const beltGeo = new THREE.TorusGeometry(0.32, 0.03, 8, 24);
+    const belt = new THREE.Mesh(beltGeo, darkSteelMat);
+    belt.position.set(0, -0.15, 0.82);
+    this.parts.crankcase.add(belt);
+
+    // 2. Left Cylinder Bank (2 Cylinders along -X)
     this.headShaderMat = this.createThermalMaterial(0);
-    this.parts.cylinderHead = new THREE.Mesh(headGeo, this.headShaderMat);
-    this.parts.cylinderHead.position.set(0, 1.35, 0);
-    this.engineGroup.add(this.parts.cylinderHead);
+    this.blockShaderMat = this.createThermalMaterial(1);
 
-    // Spark plug & valves on head
-    const plugGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.35, 16);
-    const plugMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
-    const plug = new THREE.Mesh(plugGeo, plugMat);
-    plug.position.set(0, 0.35, 0);
-    this.parts.cylinderHead.add(plug);
+    const leftBankGroup = new THREE.Group();
+    [-0.38, 0.38].forEach((zPos, idx) => {
+      // Cylinder barrel with cooling fins
+      const barrelGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.65, 24);
+      const barrelMesh = new THREE.Mesh(barrelGeo, this.blockShaderMat);
+      barrelMesh.rotation.z = Math.PI / 2;
+      barrelMesh.position.set(-0.65, 0, zPos);
+      leftBankGroup.add(barrelMesh);
 
-    // Intake & Exhaust Valves
-    const valveGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.25, 16);
-    const valveMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8 });
-    const valveIn = new THREE.Mesh(valveGeo, valveMat);
-    valveIn.position.set(0.3, 0.28, 0);
-    const valveEx = new THREE.Mesh(valveGeo, valveMat);
-    valveEx.position.set(-0.3, 0.28, 0);
-    this.parts.cylinderHead.add(valveIn);
-    this.parts.cylinderHead.add(valveEx);
+      // Cooling fins
+      for (let f = 0; f < 5; f++) {
+        const finGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.025, 24);
+        const finMesh = new THREE.Mesh(finGeo, this.blockShaderMat);
+        finMesh.rotation.z = Math.PI / 2;
+        finMesh.position.set(-0.45 - f * 0.08, 0, zPos);
+        leftBankGroup.add(finMesh);
+      }
 
-    // 4. Piston with Internal Degradation Meshes
-    const pistonGroup = new THREE.Group();
-    const pistonGeo = new THREE.CylinderGeometry(0.66, 0.66, 0.6, 32);
-    const pistonMat = new THREE.MeshStandardMaterial({
-      color: 0xcfd8dc,
-      metalness: 0.85,
-      roughness: 0.2
+      // Cylinder Head
+      const headGeo = new THREE.BoxGeometry(0.35, 0.68, 0.68);
+      const headMesh = new THREE.Mesh(headGeo, this.headShaderMat);
+      headMesh.position.set(-1.05, 0, zPos);
+      leftBankGroup.add(headMesh);
+
+      // Valve rocker cover
+      const rockerGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.62, 16);
+      const rocker = new THREE.Mesh(rockerGeo, darkSteelMat);
+      rocker.rotation.x = Math.PI / 2;
+      rocker.position.set(-1.24, 0, zPos);
+      leftBankGroup.add(rocker);
     });
-    const pistonBody = new THREE.Mesh(pistonGeo, pistonMat);
-    pistonGroup.add(pistonBody);
+    leftBankGroup.position.set(0, 0, 0);
+    this.parts.leftCylinderBank = leftBankGroup;
+    this.engineGroup.add(this.parts.leftCylinderBank);
 
-    // Piston Crown Carbon Scoring (Degradation Feature)
-    const crownGeo = new THREE.CircleGeometry(0.64, 32);
-    const crownMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b, // Dark carbon deposits
-      roughness: 0.9,
-      metalness: 0.1
+    // 3. Right Cylinder Bank (2 Cylinders along +X)
+    const rightBankGroup = new THREE.Group();
+    [-0.38, 0.38].forEach((zPos, idx) => {
+      // Cylinder barrel with cooling fins
+      const barrelGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.65, 24);
+      const barrelMesh = new THREE.Mesh(barrelGeo, this.blockShaderMat);
+      barrelMesh.rotation.z = -Math.PI / 2;
+      barrelMesh.position.set(0.65, 0, zPos);
+      rightBankGroup.add(barrelMesh);
+
+      // Cooling fins
+      for (let f = 0; f < 5; f++) {
+        const finGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.025, 24);
+        const finMesh = new THREE.Mesh(finGeo, this.blockShaderMat);
+        finMesh.rotation.z = -Math.PI / 2;
+        finMesh.position.set(0.45 + f * 0.08, 0, zPos);
+        rightBankGroup.add(finMesh);
+      }
+
+      // Cylinder Head
+      const headGeo = new THREE.BoxGeometry(0.35, 0.68, 0.68);
+      const headMesh = new THREE.Mesh(headGeo, this.headShaderMat);
+      headMesh.position.set(1.05, 0, zPos);
+      rightBankGroup.add(headMesh);
+
+      // Valve rocker cover
+      const rockerGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.62, 16);
+      const rocker = new THREE.Mesh(rockerGeo, darkSteelMat);
+      rocker.rotation.x = Math.PI / 2;
+      rocker.position.set(1.24, 0, zPos);
+      rightBankGroup.add(rocker);
     });
-    const crownScuff = new THREE.Mesh(crownGeo, crownMat);
-    crownScuff.rotation.x = -Math.PI / 2;
-    crownScuff.position.y = 0.301;
-    pistonGroup.add(crownScuff);
+    rightBankGroup.position.set(0, 0, 0);
+    this.parts.rightCylinderBank = rightBankGroup;
+    this.engineGroup.add(this.parts.rightCylinderBank);
 
-    // Piston Rings (Compression Ring, Scraper Ring, Oil Control Ring)
-    const ringMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.9, roughness: 0.3 });
-    for (let r = 0; r < 3; r++) {
-      const ringGeo = new THREE.TorusGeometry(0.662, 0.012, 8, 32);
-      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-      ringMesh.rotation.x = Math.PI / 2;
-      ringMesh.position.y = 0.18 - r * 0.08;
-      pistonGroup.add(ringMesh);
-    }
+    // 4. Overhead Intake Manifold Pipes (Top)
+    const intakeGroup = new THREE.Group();
+    const plenumGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.8, 16);
+    const plenum = new THREE.Mesh(plenumGeo, metalMat);
+    plenum.rotation.x = Math.PI / 2;
+    plenum.position.set(0, 0.62, 0);
+    intakeGroup.add(plenum);
 
-    // Wristpin
-    const pinGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.6, 16);
-    const pinMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.95 });
-    const wristPin = new THREE.Mesh(pinGeo, pinMat);
-    wristPin.rotation.z = Math.PI / 2;
-    wristPin.position.y = -0.05;
-    pistonGroup.add(wristPin);
+    // Intake runners to left and right
+    [-0.38, 0.38].forEach(zPos => {
+      const runnerL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.85, 12), metalMat);
+      runnerL.rotation.z = 0.55;
+      runnerL.position.set(-0.45, 0.45, zPos);
+      intakeGroup.add(runnerL);
 
-    pistonGroup.position.set(0, 0.4, 0);
-    this.parts.piston = pistonGroup;
-    this.engineGroup.add(this.parts.piston);
+      const runnerR = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.85, 12), metalMat);
+      runnerR.rotation.z = -0.55;
+      runnerR.position.set(0.45, 0.45, zPos);
+      intakeGroup.add(runnerR);
+    });
+    this.parts.intakeManifold = intakeGroup;
+    this.engineGroup.add(this.parts.intakeManifold);
 
-    // 5. Connecting Rod
-    const conrodGroup = new THREE.Group();
-    const rodGeo = new THREE.BoxGeometry(0.12, 1.2, 0.16);
-    const rodMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.85, roughness: 0.2 });
-    const rodMesh = new THREE.Mesh(rodGeo, rodMat);
-    rodMesh.position.y = 0.6;
-    conrodGroup.add(rodMesh);
-    conrodGroup.position.set(0, -0.6, 0);
-    this.parts.conrod = conrodGroup;
-    this.engineGroup.add(this.parts.conrod);
+    // 5. Lower Exhaust Manifold Pipes (EGT Thermal Glow)
+    this.exhaustShaderMat = this.createThermalMaterial(2);
+    const exhaustGroup = new THREE.Group();
+    const exCurveL = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.9, -0.35, -0.38),
+      new THREE.Vector3(-0.5, -0.75, -0.1),
+      new THREE.Vector3(0, -0.85, 0.2),
+      new THREE.Vector3(0.5, -0.9, 0.5),
+      new THREE.Vector3(0.9, -0.95, 0.85)
+    ]);
+    const exGeo = new THREE.TubeGeometry(exCurveL, 32, 0.09, 12, false);
+    const exMesh = new THREE.Mesh(exGeo, this.exhaustShaderMat);
+    exhaustGroup.add(exMesh);
 
-    // 6. Crankshaft & Journal Bearing (Degradation Feature)
+    // Turbocharger turbine housing
+    const turboGeo = new THREE.TorusGeometry(0.22, 0.08, 12, 24);
+    const turbo = new THREE.Mesh(turboGeo, this.exhaustShaderMat);
+    turbo.position.set(0.5, -0.85, 0.4);
+    exhaustGroup.add(turbo);
+
+    this.parts.exhaust = exhaustGroup;
+    this.engineGroup.add(this.parts.exhaust);
+
+    // 6. Reciprocating Piston Kinematics inside block
+    const pistonLGroup = new THREE.Group();
+    const pistonGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.35, 24);
+    const pistonMat = new THREE.MeshStandardMaterial({ color: 0xcfd8dc, metalness: 0.9, roughness: 0.2 });
+    const pistonLMesh = new THREE.Mesh(pistonGeo, pistonMat);
+    pistonLMesh.rotation.z = Math.PI / 2;
+    pistonLGroup.add(pistonLMesh);
+    this.parts.pistonL = pistonLGroup;
+    this.engineGroup.add(this.parts.pistonL);
+
+    // Crankshaft inside crankcase
     const crankGroup = new THREE.Group();
-    const crankPinGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.4, 16);
-    const crankPin = new THREE.Mesh(crankPinGeo, metalMat);
+    const crankPin = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.7, 16), metalMat);
     crankPin.rotation.x = Math.PI / 2;
-    crankPin.position.set(0, 0.35, 0);
     crankGroup.add(crankPin);
-
-    // Bearing Shell Wear Band (Bronze-colored thermal distress scoring)
-    const bearingShellGeo = new THREE.CylinderGeometry(0.128, 0.128, 0.2, 16, 1, true);
-    const bearingShellMat = new THREE.MeshStandardMaterial({
-      color: 0xd97706, // Bronze/copper wear layer exposed
-      metalness: 0.8,
-      roughness: 0.4
-    });
-    const bearingShell = new THREE.Mesh(bearingShellGeo, bearingShellMat);
-    bearingShell.rotation.x = Math.PI / 2;
-    bearingShell.position.set(0, 0.35, 0);
-    crankGroup.add(bearingShell);
-
-    const webGeo = new THREE.BoxGeometry(0.4, 0.65, 0.14);
-    const webMesh = new THREE.Mesh(webGeo, darkSteelMat);
-    webMesh.position.set(0, 0.1, -0.15);
-    crankGroup.add(webMesh);
-
-    crankGroup.position.set(0, -0.85, 0);
     this.parts.crankshaft = crankGroup;
     this.engineGroup.add(this.parts.crankshaft);
 
-    // 7. Exhaust Manifold (Equipped with EGT Thermal Shader)
-    const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0.5, 1.3, 0),
-      new THREE.Vector3(1.2, 1.2, 0.3),
-      new THREE.Vector3(1.6, 0.6, 0.5),
-      new THREE.Vector3(1.7, -0.2, 0.6)
-    ]);
-    const exhaustGeo = new THREE.TubeGeometry(curve, 32, 0.14, 16, false);
-    this.exhaustShaderMat = this.createThermalMaterial(2);
-    this.parts.exhaust = new THREE.Mesh(exhaustGeo, this.exhaustShaderMat);
-    this.engineGroup.add(this.parts.exhaust);
-
-    // Store base initial local positions for exploded-view calculation
+    // Cache initial positions for exploded view
     for (const [key, part] of Object.entries(this.parts)) {
       this.initialPositions[key] = part.position.clone();
     }
   }
 
-  setupDegradationCallouts() {
-    // Floating 3D degradation marker sprite badges that reveal when exploded
-    const createMarker = (text, pos, color = 0x38bdf8) => {
+  // -------------------------------------------------------------------------
+  // 3. 3D ALT / Battery Pack Module
+  // -------------------------------------------------------------------------
+  buildBatteryPack() {
+    this.batteryGroup = new THREE.Group();
+    this.batteryGroup.position.set(2.05, -0.38, 0.35);
+    this.batteryGroup.scale.set(0.68, 0.68, 0.68);
+    this.scene.add(this.batteryGroup);
+
+    // Battery Main Casing (Two-tone dark alloy and military emerald)
+    const packGeo = new THREE.BoxGeometry(1.3, 0.9, 1.0);
+    const packMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      metalness: 0.8,
+      roughness: 0.3
+    });
+    const packMesh = new THREE.Mesh(packGeo, packMat);
+    this.batteryGroup.add(packMesh);
+
+    // Heat Sink Cooling Ribs on Side
+    for (let r = 0; r < 5; r++) {
+      const ribGeo = new THREE.BoxGeometry(0.04, 0.7, 0.9);
+      const ribMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.9 });
+      const rib = new THREE.Mesh(ribGeo, ribMat);
+      rib.position.set(-0.66 + r * 0.02, 0, 0);
+      this.batteryGroup.add(rib);
+    }
+
+    // Top Emerald Header
+    const topCapGeo = new THREE.BoxGeometry(1.24, 0.16, 0.94);
+    const topCapMat = new THREE.MeshStandardMaterial({
+      color: 0x059669,
+      emissive: 0x047857,
+      emissiveIntensity: 0.35
+    });
+    const topCap = new THREE.Mesh(topCapGeo, topCapMat);
+    topCap.position.y = 0.52;
+    this.batteryGroup.add(topCap);
+
+    // Terminal Posts (+ Red, - Black)
+    const termPos = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.18, 16), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
+    termPos.position.set(-0.35, 0.66, 0.25);
+    this.batteryGroup.add(termPos);
+
+    const termNeg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.18, 16), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+    termNeg.position.set(0.35, 0.66, 0.25);
+    this.batteryGroup.add(termNeg);
+
+    // Glowing 100% Charge LED Bar
+    const ledBarGeo = new THREE.BoxGeometry(0.65, 0.06, 0.04);
+    const ledBarMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+    const ledBar = new THREE.Mesh(ledBarGeo, ledBarMat);
+    ledBar.position.set(0, 0.25, 0.52);
+    this.batteryGroup.add(ledBar);
+  }
+
+  // -------------------------------------------------------------------------
+  // 4. Schematic Animated 3D Fuel & Oil System Loop
+  // -------------------------------------------------------------------------
+  buildFuelOilLoop() {
+    this.loopGroup = new THREE.Group();
+    this.loopGroup.position.set(0.75, -0.62, 0.8);
+    this.loopGroup.scale.set(0.65, 0.65, 0.65);
+    this.scene.add(this.loopGroup);
+
+    // Oil Reservoir Tank (Vertical translucent cylinder)
+    const tankGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.85, 24);
+    const tankMat = new THREE.MeshStandardMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.7,
+      metalness: 0.85,
+      roughness: 0.15
+    });
+    const tank = new THREE.Mesh(tankGeo, tankMat);
+    tank.position.set(0, 0.38, 0);
+    this.loopGroup.add(tank);
+
+    // Tank top pressure cap
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0xf59e0b }));
+    cap.position.set(0, 0.84, 0);
+    this.loopGroup.add(cap);
+
+    // Oil Filter Module
+    const filterGeo = new THREE.BoxGeometry(0.75, 0.38, 0.42);
+    const filterMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.9 });
+    const filter = new THREE.Mesh(filterGeo, filterMat);
+    filter.position.set(0, -0.32, 0);
+    this.loopGroup.add(filter);
+
+    // Illuminated Closed Circulation Piping Loop
+    const pipePoints = [
+      new THREE.Vector3(0, 0.78, 0),
+      new THREE.Vector3(0.72, 0.78, 0),
+      new THREE.Vector3(0.72, -0.32, 0),
+      new THREE.Vector3(0.38, -0.32, 0),
+      new THREE.Vector3(-0.38, -0.32, 0),
+      new THREE.Vector3(-0.72, -0.32, 0),
+      new THREE.Vector3(-0.72, 0.38, 0),
+      new THREE.Vector3(-0.3, 0.38, 0)
+    ];
+    this.loopCurve = new THREE.CatmullRomCurve3(pipePoints, true);
+    const pipeGeo = new THREE.TubeGeometry(this.loopCurve, 54, 0.038, 10, true);
+    const pipeMat = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      emissive: 0x0284c7,
+      emissiveIntensity: 0.4,
+      transparent: true,
+      opacity: 0.8
+    });
+    const pipeMesh = new THREE.Mesh(pipeGeo, pipeMat);
+    this.loopGroup.add(pipeMesh);
+
+    // Circulating Fluid Particle Beacons
+    this.fluidParticles = [];
+    const particleGeo = new THREE.SphereGeometry(0.048, 8, 8);
+    const particleMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+    for (let p = 0; p < 10; p++) {
+      const pMesh = new THREE.Mesh(particleGeo, particleMat);
+      this.loopGroup.add(pMesh);
+      this.fluidParticles.push({ mesh: pMesh, offset: p / 10 });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 5. Pinned 3D Holographic Data Callouts
+  // -------------------------------------------------------------------------
+  setupPinnedCallouts() {
+    const createCallout = (title, lines, color = '#38bdf8') => {
       const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 64;
+      canvas.width = 440;
+      canvas.height = 140;
       const ctx = canvas.getContext('2d');
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-      ctx.roundRect(4, 4, 248, 56, 8);
+
+      // Card background
+      ctx.fillStyle = 'rgba(8, 14, 28, 0.92)';
+      ctx.roundRect(6, 6, 428, 128, 10);
       ctx.fill();
-      ctx.strokeStyle = '#38bdf8';
-      ctx.lineWidth = 2;
-      ctx.roundRect(4, 4, 248, 56, 8);
+
+      // Border & header line
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.roundRect(6, 6, 428, 128, 10);
       ctx.stroke();
 
+      ctx.fillStyle = color;
+      ctx.font = 'bold 20px Inter, sans-serif';
+      ctx.fillText(title, 20, 38);
+
+      // Value lines
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 18px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(text, 128, 38);
+      ctx.font = '16px "JetBrains Mono", monospace';
+      lines.forEach((line, idx) => {
+        ctx.fillText(line, 20, 72 + idx * 28);
+      });
 
       const texture = new THREE.CanvasTexture(canvas);
-      const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.0 });
+      texture.minFilter = THREE.LinearFilter;
+      const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
       const sprite = new THREE.Sprite(spriteMat);
-      sprite.position.copy(pos);
-      sprite.scale.set(1.4, 0.35, 1);
+      sprite.scale.set(1.5, 0.48, 1);
       this.scene.add(sprite);
       return sprite;
     };
 
-    this.degradationSprites = [
-      { sprite: createMarker('Piston Crown Carbon', new THREE.Vector3(1.3, 1.0, 0)), minExplode: 0.25 },
-      { sprite: createMarker('Bearing Clearance 0.048mm', new THREE.Vector3(-1.4, -1.2, 0)), minExplode: 0.35 },
-      { sprite: createMarker('Cylinder Fin Dissipation', new THREE.Vector3(1.5, 0.5, 0)), minExplode: 0.20 }
-    ];
+    // 1. UAV Callout
+    this.calloutUAV = createCallout('AIRFRAME VIBRATION', ['VIBRATION: +1.8 G', 'RPM/CHT/EGT: 720 Hz, 148.6°C, 666.1°C'], '#38bdf8');
+    this.calloutUAV.position.set(0.1, 2.05, -0.6);
+
+    // 2. Engine Callout
+    this.calloutEngine = createCallout('RPM/CHT/EGT', ['720 Hz, 148.6 °C, 666.1 °C', 'ROTAX 914 F TURBO'], '#f59e0b');
+    this.calloutEngine.position.set(-0.85, 0.55, 0.95);
+
+    // 3. Battery Callout
+    this.calloutBattery = createCallout('ALT/BATTERY PACK', ['CHARGE STATE: 100%', 'BUS VOLTAGE: 28.4 V'], '#10b981');
+    this.calloutBattery.position.set(2.05, 0.42, 0.35);
+
+    // 4. Fluid Loop Callout
+    this.calloutLoop = createCallout('FUEL & OIL SYSTEM LOOP', ['FLOW: 8.30 L/h', 'PRESSURE: 281.8 kPa'], '#06b6d4');
+    this.calloutLoop.position.set(0.75, 0.28, 0.8);
   }
 
-  /**
-   * Set exploded assembly view percentage (0% to 100% or 0.0 to 1.0)
-   */
+  // -------------------------------------------------------------------------
+  // 6. View Manager Camera Modes
+  // -------------------------------------------------------------------------
+  setViewMode(mode) {
+    this.viewMode = mode;
+    if (mode === 'overview') {
+      this.targetCameraPos.set(0, 3.4, 7.2);
+      this.targetLookAt.set(0.1, 0.1, 0);
+    } else if (mode === 'propulsion') {
+      this.targetCameraPos.set(-0.85, 0.7, 3.2);
+      this.targetLookAt.set(-0.85, -0.4, 0.95);
+    } else if (mode === 'systems') {
+      this.targetCameraPos.set(1.4, 0.7, 3.2);
+      this.targetLookAt.set(1.4, -0.4, 0.6);
+    }
+  }
+
   setExplodedView(input) {
     let factor = (input > 1.0) ? (input / 100.0) : input;
     this.explodedFactor = Math.max(0.0, Math.min(1.0, factor));
     const ef = this.explodedFactor;
 
-    // Dynamically offset along physical disassembly vectors
-    if (this.parts.cylinderHead) {
-      this.parts.cylinderHead.position.y = this.initialPositions.cylinderHead.y + ef * 2.2;
+    if (this.parts.leftCylinderBank) {
+      this.parts.leftCylinderBank.position.x = this.initialPositions.leftCylinderBank.x - ef * 1.5;
     }
-    if (this.parts.cylinderBlock) {
-      this.parts.cylinderBlock.position.y = this.initialPositions.cylinderBlock.y + ef * 1.1;
+    if (this.parts.rightCylinderBank) {
+      this.parts.rightCylinderBank.position.x = this.initialPositions.rightCylinderBank.x + ef * 1.5;
+    }
+    if (this.parts.intakeManifold) {
+      this.parts.intakeManifold.position.y = this.initialPositions.intakeManifold.y + ef * 1.4;
     }
     if (this.parts.exhaust) {
-      this.parts.exhaust.position.x = this.initialPositions.exhaust.x + ef * 1.8;
-      this.parts.exhaust.position.z = this.initialPositions.exhaust.z + ef * 0.9;
+      this.parts.exhaust.position.y = this.initialPositions.exhaust.y - ef * 1.2;
     }
     if (this.parts.crankcase) {
-      this.parts.crankcase.position.y = this.initialPositions.crankcase.y - ef * 1.5;
-    }
-    if (this.parts.crankshaft) {
-      this.parts.crankshaft.position.y = this.initialPositions.crankshaft.y - ef * 0.85;
-    }
-
-    // Fade in degradation sprite callouts when exploded > 20%
-    if (this.degradationSprites) {
-      this.degradationSprites.forEach(item => {
-        if (ef >= item.minExplode) {
-          item.sprite.material.opacity = Math.min(1.0, (ef - item.minExplode) * 3.5);
-        } else {
-          item.sprite.material.opacity = 0.0;
-        }
-      });
+      this.parts.crankcase.position.y = this.initialPositions.crankcase.y - ef * 0.8;
     }
   }
 
-  /**
-   * Updates real-time CAN-bus telemetry inputs (CHT, EGT, RPM)
-   */
   updateTelemetryState(data) {
     if (data.telemetry) {
-      this.rpm = data.telemetry.rpm || 4800.0;
-      this.cht = data.telemetry.cht || 148.9;
-      this.egt = data.telemetry.egt || 666.1;
+      this.rpm = data.telemetry.rpm || 4535.4;
+      this.cht = data.telemetry.cht || 148.6;
+      this.egt = data.telemetry.egt || 667.7;
 
-      // Update GLSL shader uniforms in real-time
       if (this.thermalUniforms) {
         this.thermalUniforms.uCht.value = this.cht;
         this.thermalUniforms.uEgt.value = this.egt;
-      }
-
-      // Point light intensity adjusts with thermodynamic heat
-      if (this.thermalPointLight) {
-        const heatNorm = Math.max(0.0, Math.min(1.0, (this.cht - 130.0) / 80.0));
-        this.thermalPointLight.intensity = 1.0 + heatNorm * 2.5;
-        this.thermalPointLight.color.setHex(this.cht > 185.0 ? 0xef4444 : 0xf59e0b);
       }
     }
   }
 
   toggleHeatmap(forceState) {
-    if (typeof forceState === 'boolean') {
-      this.heatmapEnabled = forceState;
-    } else {
-      this.heatmapEnabled = !this.heatmapEnabled;
-    }
+    this.heatmapEnabled = (typeof forceState === 'boolean') ? forceState : !this.heatmapEnabled;
     if (this.thermalUniforms) {
       this.thermalUniforms.uHeatmapEnabled.value = this.heatmapEnabled ? 1.0 : 0.0;
     }
@@ -494,9 +843,7 @@ class AeroEngine3D {
   }
 
   resetView() {
-    this.camera.position.set(3.8, 2.6, 4.8);
-    this.controls.target.set(0, 0.4, 0);
-    this.controls.update();
+    this.setViewMode('overview');
   }
 
   animate() {
@@ -507,7 +854,17 @@ class AeroEngine3D {
       this.thermalUniforms.uTime.value = elapsedTime;
     }
 
-    // Kinematic crankshaft & reciprocating piston cycle
+    // Smooth camera transition toward View Manager target
+    this.camera.position.lerp(this.targetCameraPos, 0.05);
+    this.controls.target.lerp(this.targetLookAt, 0.05);
+
+    // Rotate UAV pusher propeller
+    this.propellerAngle += (this.rpm / 60.0) * (2 * Math.PI) * 0.004;
+    if (this.propellerGroup) {
+      this.propellerGroup.rotation.x = this.propellerAngle;
+    }
+
+    // Engine crankshaft rotation
     const crankSpeed = (this.rpm / 60.0) * (2 * Math.PI) * 0.003;
     this.crankAngle += crankSpeed;
 
@@ -515,21 +872,24 @@ class AeroEngine3D {
       this.parts.crankshaft.rotation.z = this.crankAngle;
     }
 
-    // Reciprocating slider-crank kinematics
-    const r = 0.35;
-    const l = 1.1;
+    // Reciprocating piston kinematics along X
+    const r = 0.22;
+    const l = 0.75;
     const s = r * Math.cos(this.crankAngle) + Math.sqrt(Math.max(0.01, l * l - r * r * Math.sin(this.crankAngle) * Math.sin(this.crankAngle)));
-    const pistonY = s - 0.7 + (this.explodedFactor * 0.6);
+    const pistonX = -0.65 - (s - 0.5) - (this.explodedFactor * 0.8);
 
-    if (this.parts.piston) {
-      this.parts.piston.position.y = pistonY;
+    if (this.parts.pistonL) {
+      this.parts.pistonL.position.x = pistonX;
     }
 
-    if (this.parts.conrod) {
-      const rodAngle = Math.asin((-r * Math.sin(this.crankAngle)) / l);
-      this.parts.conrod.rotation.z = rodAngle;
-      this.parts.conrod.position.x = -r * Math.sin(this.crankAngle) * 0.4;
-      this.parts.conrod.position.y = this.initialPositions.conrod.y + (pistonY - 0.4) * 0.5;
+    // Animate fluid circulation particles in fuel/oil loop
+    if (this.loopCurve && this.fluidParticles.length > 0) {
+      const loopTime = (elapsedTime * 0.3) % 1.0;
+      this.fluidParticles.forEach(p => {
+        const t = (loopTime + p.offset) % 1.0;
+        const pos = this.loopCurve.getPointAt(t);
+        p.mesh.position.copy(pos);
+      });
     }
 
     this.controls.update();

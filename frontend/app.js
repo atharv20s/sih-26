@@ -71,6 +71,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // View Manager Mode Switcher (Syncs both viewport and mission view manager buttons)
+  const viewBtns = document.querySelectorAll('.vm-btn, .mvm-btn');
+  viewBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.getAttribute('data-view');
+      viewBtns.forEach(b => {
+        if (b.getAttribute('data-view') === mode) {
+          b.classList.add('active');
+        } else {
+          b.classList.remove('active');
+        }
+      });
+      engine3D.setViewMode(mode);
+    });
+  });
+
   // -------------------------------------------------------------------------
   // Feature 3: Mission Replay & Environmental Simulation Controls
   // -------------------------------------------------------------------------
