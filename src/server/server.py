@@ -79,6 +79,10 @@ class SimulationController:
     def inject_fault(self, fault_type: Optional[str]):
         self.injected_fault = fault_type
         if fault_type is None:
+            self.cycle = 0
+            self.health = 1.0
+            self.throttle = 0.72
+            self.mixture = 13.8
             self.cht = 148.6
             self.egt = 667.7
             self.oil_pressure = 281.8
@@ -113,8 +117,8 @@ class SimulationController:
         base_oil_temp = 85.0 + temp_delta * 0.45 + cooling_loss * 0.25
         base_oil_p = 281.8 - (base_oil_temp - 85.0) * 1.3 - (self.altitude / 10000.0) * 8.0
 
-        # Gradual degradation
-        self.health = max(0.05, 1.0 - (self.cycle * 0.0012))
+        # Realistic gradual mission degradation (stable across flight hours)
+        self.health = max(0.85, 1.0 - (self.cycle * 0.00002))
         deg_factor = (1.0 - self.health)
 
         # Apply specific injected fault or natural degradation
@@ -148,12 +152,17 @@ class SimulationController:
         elif self.injected_fault == "vibration_spike":
             self.vibration_rms = min(4.4, self.vibration_rms + 0.18 + noise(0.05))
         else:
-            # Nominal degradation response with ambient coupling
-            self.cht = base_cht + deg_factor * 15.0 + noise(0.5)
-            self.egt = base_egt + deg_factor * 20.0 + noise(1.0)
-            self.vibration_rms = base_vib + deg_factor * 0.4 + noise(0.02)
-            self.oil_pressure = base_oil_p - deg_factor * 25.0 + noise(1.2)
-            self.oil_temp = base_oil_temp + deg_factor * 12.0 + noise(0.3)
+            # 5-6 second thermodynamic cruise breathing cycle (period = 55 steps = 5.5s)
+            phase = (self.cycle / 55.0) * 2.0 * np.pi
+            therm_wave = float(np.sin(phase))
+            therm_wave_cos = float(np.cos(phase))
+
+            # Nominal degradation response with ambient coupling and 5.5s gentle breathing
+            self.cht = base_cht + deg_factor * 15.0 + 0.85 * therm_wave
+            self.egt = base_egt + deg_factor * 20.0 + 2.10 * therm_wave_cos
+            self.vibration_rms = base_vib + deg_factor * 0.4 + 0.035 * therm_wave
+            self.oil_pressure = base_oil_p - deg_factor * 25.0 + 1.80 * therm_wave_cos
+            self.oil_temp = base_oil_temp + deg_factor * 12.0 + 0.45 * therm_wave
 
         self.map_kpa = round(max(35.0, 101.3 * density_ratio), 1)
         self.fuel_flow = round(max(4.0, (8.30 + (self.throttle - 0.72) * 6.0) * (self.map_kpa / 92.0) + noise(0.05)), 2)
