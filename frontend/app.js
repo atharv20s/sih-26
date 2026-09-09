@@ -47,26 +47,218 @@ document.addEventListener('DOMContentLoaded', () => {
   const archTabPanes = document.querySelectorAll('.arch-tab-pane');
 
   // Exploded View Slider Listener
-  explodedSlider.addEventListener('input', (e) => {
-    const val = parseFloat(e.target.value);
-    explodedVal.textContent = `${Math.round(val * 100)}%`;
-    engine3D.setExplodedView(val);
-  });
+  // Exploded View Slider Listener (0% - 100%)
+  if (explodedSlider && explodedVal) {
+    explodedSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      explodedVal.textContent = `${Math.round(val)}%`;
+      engine3D.setExplodedView(val);
+    });
+  }
 
-  // Toggle Heatmap Button
-  btnHeatmap.addEventListener('click', () => {
-    engine3D.heatmapEnabled = !engine3D.heatmapEnabled;
-    btnHeatmap.classList.toggle('active', engine3D.heatmapEnabled);
-    if (!engine3D.heatmapEnabled) {
-      engine3D.headMat.emissiveIntensity = 0.0;
-      engine3D.exhaustMat.emissiveIntensity = 0.0;
-    }
-  });
+  // Toggle Heatmap Button (GLSL Volumetric Shader)
+  if (btnHeatmap) {
+    btnHeatmap.addEventListener('click', () => {
+      const active = engine3D.toggleHeatmap();
+      btnHeatmap.classList.toggle('active', active);
+    });
+  }
 
   // Reset Camera View
-  btnResetView.addEventListener('click', () => {
-    engine3D.camera.position.set(3.8, 2.6, 4.8);
-    engine3D.controls.target.set(0, 0.4, 0);
+  if (btnResetView) {
+    btnResetView.addEventListener('click', () => {
+      engine3D.resetView();
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Feature 3: Mission Replay & Environmental Simulation Controls
+  // -------------------------------------------------------------------------
+  const sliderAltitude = document.getElementById('slider-altitude');
+  const valAltitude = document.getElementById('val-altitude');
+  const envDensity = document.getElementById('env-density');
+  const envPressure = document.getElementById('env-pressure');
+
+  const sliderAmbientTemp = document.getElementById('slider-ambient-temp');
+  const valAmbientTemp = document.getElementById('val-ambient-temp');
+  const envCondition = document.getElementById('env-condition');
+  const envConvection = document.getElementById('env-convection');
+
+  const replayClock = document.getElementById('replay-clock');
+  const scrubberCurrentTime = document.getElementById('scrubber-current-time');
+  const replayTimeline = document.getElementById('replay-timeline');
+  const btnReplayPlay = document.getElementById('btn-replay-play');
+  const btnReplayStepBack = document.getElementById('btn-replay-step-back');
+  const btnReplayStepFwd = document.getElementById('btn-replay-step-fwd');
+  const selectReplaySpeed = document.getElementById('select-replay-speed');
+  const phasePills = document.querySelectorAll('.phase-pill');
+
+  let replaySeconds = 2535; // Default: T+00:42:15
+  let isReplayPlaying = false;
+  let replayInterval = null;
+  let replaySpeed = 1.0;
+
+  function formatTime(totalSec) {
+    const h = Math.floor(totalSec / 3600).toString().padStart(2, '0');
+    const m = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0');
+    const s = Math.floor(totalSec % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  }
+
+  function updateEnvironmentalState() {
+    if (!sliderAltitude || !sliderAmbientTemp) return;
+    const altFt = parseFloat(sliderAltitude.value);
+    const ambC = parseFloat(sliderAmbientTemp.value);
+
+    // Standard atmospheric barometric lapse calculations
+    const densityRatio = Math.pow(Math.max(0.01, 1 - 2.25577e-5 * altFt), 4.25588);
+    const airDensity = (1.225 * densityRatio).toFixed(3);
+    const pressureInHg = (29.92 * Math.pow(Math.max(0.01, 1 - 6.8756e-6 * altFt), 5.2559)).toFixed(2);
+
+    valAltitude.textContent = `${altFt.toLocaleString()} ft`;
+    envDensity.textContent = `Air Density: ${airDensity} kg/m³`;
+    envPressure.textContent = `Pressure: ${pressureInHg} inHg`;
+
+    valAmbientTemp.textContent = `${ambC > 0 ? '+' : ''}${ambC.toFixed(1)} °C`;
+    const coolingFactor = Math.max(0.5, (1.0 + (15.0 - ambC) * 0.008) * Math.sqrt(densityRatio)).toFixed(2);
+    envConvection.textContent = `Cooling Factor: ${coolingFactor}x`;
+
+    let condition = 'ISA Standard Day';
+    if (ambC > 35) condition = 'High Thermal Heat Soak';
+    else if (ambC < -10) condition = 'Sub-Zero Freezing Airframe';
+    if (altFt > 15000) condition += ' (Hypobaric)';
+    envCondition.textContent = `Condition: ${condition}`;
+
+    // Feed environment parameters into live engine simulation
+    const envChtOffset = (ambC - 15.0) * 0.4 - (altFt / 20000.0) * 8.0;
+    engine3D.updateTelemetryState({
+      telemetry: {
+        cht: Math.max(110.0, 148.9 + envChtOffset),
+        egt: Math.max(500.0, 666.1 + (ambC - 15.0) * 0.6)
+      }
+    });
+  }
+
+  if (sliderAltitude) sliderAltitude.addEventListener('input', updateEnvironmentalState);
+  if (sliderAmbientTemp) sliderAmbientTemp.addEventListener('input', updateEnvironmentalState);
+
+  function applyMissionTimelineStep(sec) {
+    replaySeconds = Math.max(0, Math.min(6300, sec));
+    if (replayTimeline) replayTimeline.value = replaySeconds;
+
+    const timeStr = formatTime(replaySeconds);
+    if (replayClock) replayClock.textContent = `T+${timeStr}`;
+    if (scrubberCurrentTime) scrubberCurrentTime.textContent = timeStr;
+
+    // Highlight active phase pill
+    phasePills.forEach(pill => {
+      const pTime = parseInt(pill.getAttribute('data-time'), 10);
+      pill.classList.remove('active');
+      if (Math.abs(replaySeconds - pTime) < 500) {
+        pill.classList.add('active');
+      }
+    });
+
+    // Replay telemetry based on mission profile phase
+    let simData = {
+      telemetry: { rpm: 4800, cht: 148.9, egt: 666.1, oil_pressure: 320, oil_temp: 85, vibration_rms: 1.2, fuel_flow: 9.5, afr: 13.8 },
+      rul_cycles: 380,
+      adjusted_rul: 380,
+      fault_archetype: 'nominal',
+      fault_confidence: 0.94
+    };
+
+    if (replaySeconds < 300) {
+      // Taxi
+      simData.telemetry.rpm = 2200;
+      simData.telemetry.cht = 115.0;
+      simData.telemetry.egt = 540.0;
+      simData.rul_cycles = 490;
+    } else if (replaySeconds < 1500) {
+      // Climb
+      simData.telemetry.rpm = 5400;
+      simData.telemetry.cht = 168.0;
+      simData.telemetry.egt = 720.0;
+      simData.rul_cycles = 420;
+    } else if (replaySeconds >= 4200 && replaySeconds < 5100) {
+      // Thermal Spike Micro-Fault
+      simData.telemetry.rpm = 5300;
+      simData.telemetry.cht = 214.5;
+      simData.telemetry.egt = 792.0;
+      simData.rul_cycles = 92;
+      simData.adjusted_rul = 92;
+      simData.fault_archetype = 'thermal_runaway';
+      simData.fault_confidence = 0.91;
+    } else if (replaySeconds >= 5100 && replaySeconds < 5800) {
+      // DRL De-Rate Active Recovery
+      simData.telemetry.rpm = 4450;
+      simData.telemetry.cht = 172.0;
+      simData.telemetry.egt = 680.0;
+      simData.rul_cycles = 135;
+      simData.adjusted_rul = 175;
+      simData.extension_cycles = 40.0;
+      simData.fault_archetype = 'thermal_runaway';
+      simData.fault_confidence = 0.88;
+    }
+
+    engine3D.updateTelemetryState(simData);
+    for (const [s, val] of Object.entries(simData.telemetry)) {
+      updateGauge(s, val);
+    }
+  }
+
+  if (replayTimeline) {
+    replayTimeline.addEventListener('input', (e) => {
+      applyMissionTimelineStep(parseInt(e.target.value, 10));
+    });
+  }
+
+  if (btnReplayPlay) {
+    btnReplayPlay.addEventListener('click', () => {
+      isReplayPlaying = !isReplayPlaying;
+      if (isReplayPlaying) {
+        btnReplayPlay.textContent = '⏸ PAUSE';
+        btnReplayPlay.classList.add('active');
+        replayInterval = setInterval(() => {
+          applyMissionTimelineStep(replaySeconds + Math.round(1 * replaySpeed));
+          if (replaySeconds >= 6300) {
+            isReplayPlaying = false;
+            btnReplayPlay.textContent = '▶ PLAY';
+            btnReplayPlay.classList.remove('active');
+            clearInterval(replayInterval);
+          }
+        }, 100);
+      } else {
+        btnReplayPlay.textContent = '▶ PLAY';
+        btnReplayPlay.classList.remove('active');
+        if (replayInterval) clearInterval(replayInterval);
+      }
+    });
+  }
+
+  if (btnReplayStepBack) {
+    btnReplayStepBack.addEventListener('click', () => {
+      applyMissionTimelineStep(replaySeconds - 10);
+    });
+  }
+
+  if (btnReplayStepFwd) {
+    btnReplayStepFwd.addEventListener('click', () => {
+      applyMissionTimelineStep(replaySeconds + 10);
+    });
+  }
+
+  if (selectReplaySpeed) {
+    selectReplaySpeed.addEventListener('change', (e) => {
+      replaySpeed = parseFloat(e.target.value);
+    });
+  }
+
+  phasePills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      const targetSec = parseInt(pill.getAttribute('data-time'), 10);
+      applyMissionTimelineStep(targetSec);
+    });
   });
 
   // Setup Fault Injection Buttons

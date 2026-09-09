@@ -150,32 +150,108 @@
 
     <!-- Center: 3D Interactive WebGL Viewport -->
     <section class="center-viewport">
-      <canvas id="webgl-canvas"></canvas>
+      <div class="canvas-container" style="flex: 1; position: relative; min-height: 320px; overflow: hidden;">
+        <canvas id="webgl-canvas"></canvas>
 
-      <!-- Floating 3D Controls -->
-      <div class="viewport-floating-controls">
-        <div class="viewport-toolbar">
-          <div class="slider-container">
-            <span>EXPLODED VIEW:</span>
-            <input type="range" id="exploded-slider" min="0" max="1" step="0.01" value="0">
-            <span id="exploded-val">0%</span>
+        <!-- Floating 3D Controls -->
+        <div class="viewport-floating-controls">
+          <div class="viewport-toolbar">
+            <div class="slider-container">
+              <span>EXPLODED VIEW:</span>
+              <input type="range" id="exploded-slider" min="0" max="100" step="1" value="0">
+              <span id="exploded-val">0%</span>
+            </div>
+          </div>
+
+          <div class="viewport-toolbar">
+            <button class="tool-btn active" id="btn-heatmap">GLSL THERMAL HEATMAP</button>
+            <button class="tool-btn" id="btn-reset-view">RESET CAMERA</button>
           </div>
         </div>
 
-        <div class="viewport-toolbar">
-          <button class="tool-btn active" id="btn-heatmap">THERMAL HEATMAP</button>
-          <button class="tool-btn" id="btn-reset-view">RESET CAMERA</button>
+        <!-- Heatmap Color Legend -->
+        <div class="heatmap-legend">
+          <span>VOLUMETRIC THERMAL GRADIENT (CHT & EGT)</span>
+          <div class="legend-bar" style="background: linear-gradient(to right, #0f3899, #14a6e0, #1fc95c, #f5d020, #f77011, #e61c14, #fff1db);"></div>
+          <div class="legend-labels">
+            <span>70°C (Sump)</span>
+            <span>148.9°C (CHT)</span>
+            <span>210°C (Redline)</span>
+            <span>666.1°C+ (EGT)</span>
+          </div>
         </div>
       </div>
 
-      <!-- Heatmap Color Legend -->
-      <div class="heatmap-legend">
-        <span>THERMAL GRADIENT (°C)</span>
-        <div class="legend-bar"></div>
-        <div class="legend-labels">
-          <span>130°C</span>
-          <span>170°C</span>
-          <span>210°C+</span>
+      <!-- Mission Replay & Environmental Simulation Panel (Feature 3) -->
+      <div class="mission-replay-panel" id="mission-replay-panel">
+        <div class="replay-header">
+          <div class="replay-title-wrap">
+            <span class="replay-icon">🎛️</span>
+            <span class="replay-title">Mission Replay & Environmental Simulation</span>
+            <span class="replay-badge">STANAG 4586 RECORDER</span>
+          </div>
+          <div class="replay-clock-wrap">
+            <span class="clock-label">MISSION ELAPSED TIME:</span>
+            <span class="replay-clock" id="replay-clock">T+00:42:15</span>
+          </div>
+        </div>
+
+        <!-- Row 1: Environmental & Atmospheric In-Situ Controls -->
+        <div class="env-controls-grid">
+          <div class="env-control-card">
+            <div class="env-card-header">
+              <span class="env-label">✈️ Altitude (Flight Ceiling)</span>
+              <span class="env-value" id="val-altitude">12,500 ft</span>
+            </div>
+            <input type="range" id="slider-altitude" min="0" max="20000" step="250" value="12500" class="env-slider">
+            <div class="env-meta-row">
+              <span id="env-density">Air Density: 0.812 kg/m³</span>
+              <span id="env-pressure">Pressure: 18.75 inHg</span>
+            </div>
+          </div>
+
+          <div class="env-control-card">
+            <div class="env-card-header">
+              <span class="env-label">🌡️ Ambient Air Temperature</span>
+              <span class="env-value" id="val-ambient-temp">+15.0 °C</span>
+            </div>
+            <input type="range" id="slider-ambient-temp" min="-40" max="50" step="1" value="15" class="env-slider temp-slider">
+            <div class="env-meta-row">
+              <span id="env-condition">Condition: ISA Standard Day</span>
+              <span id="env-convection">Cooling Factor: 1.00x</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: Timeline Scrubber & Replay Playback Controls -->
+        <div class="timeline-replay-bar">
+          <div class="playback-btn-group">
+            <button class="replay-btn" id="btn-replay-step-back" title="Rewind 10 seconds">⏮ -10s</button>
+            <button class="replay-btn play-btn" id="btn-replay-play" title="Play/Pause Replay">▶ PLAY</button>
+            <button class="replay-btn" id="btn-replay-step-fwd" title="Forward 10 seconds">⏭ +10s</button>
+            <select id="select-replay-speed" class="replay-speed-select">
+              <option value="0.5">0.5x</option>
+              <option value="1.0" selected>1.0x Real-Time</option>
+              <option value="2.0">2.0x Fast</option>
+              <option value="5.0">5.0x Warp</option>
+            </select>
+          </div>
+
+          <div class="scrubber-wrap">
+            <div class="scrubber-time-row">
+              <span id="scrubber-current-time">00:42:15</span>
+              <div class="mission-phases">
+                <span class="phase-pill" data-time="300">Taxi (5m)</span>
+                <span class="phase-pill" data-time="1500">Climb (25m)</span>
+                <span class="phase-pill active" data-time="2520">Cruise (42m)</span>
+                <span class="phase-pill alert" data-time="4500">Thermal Spike (75m)</span>
+                <span class="phase-pill green" data-time="5400">DRL De-Rate (90m)</span>
+                <span class="phase-pill" data-time="6300">RTB Touchdown</span>
+              </div>
+              <span>01:45:00</span>
+            </div>
+            <input type="range" id="replay-timeline" min="0" max="6300" step="1" value="2535" class="timeline-slider">
+          </div>
         </div>
       </div>
     </section>
