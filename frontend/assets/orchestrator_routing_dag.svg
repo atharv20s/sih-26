@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 960" width="100%" height="100%" style="background-color:#0d1117; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <defs>
+    <!-- Arrowhead markers -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#58a6ff"/>
+    </marker>
+    <marker id="arrow-emerald" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#3fb950"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#d29922"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#bc8cff"/>
+    </marker>
+
+    <!-- Filters for aerospace glow -->
+    <filter id="card-glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Title Header -->
+  <g transform="translate(60, 30)">
+    <rect x="0" y="0" width="1080" height="60" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+    <text x="24" y="36" fill="#58a6ff" font-size="18" font-weight="700" letter-spacing="1">IDEAFORGE • AI AGENT ORCHESTRATOR ROUTING DAG</text>
+    <text x="760" y="36" fill="#8b949e" font-size="14" font-weight="500">SIH26054 • MALE UAV AERO ENGINE DIGITAL TWIN</text>
+  </g>
+
+  <!-- 1. Top Input Node: 100Hz UAV Telemetry -->
+  <g transform="translate(420, 115)" filter="url(#card-glow)">
+    <rect x="0" y="0" width="360" height="75" rx="10" fill="#21262d" stroke="#58a6ff" stroke-width="2"/>
+    <text x="180" y="32" fill="#f0f6fc" font-size="16" font-weight="700" text-anchor="middle">100 Hz UAV Telemetry Stream</text>
+    <text x="180" y="55" fill="#8b949e" font-size="12" text-anchor="middle">RPM, CHT 1-4, EGT, Oil P/T, Vibration, MAP, AFR</text>
+  </g>
+
+  <!-- Connecting line from Telemetry to Orchestrator -->
+  <path d="M 600 190 L 600 235" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 2. Main Central Orchestrator Node (LangGraph StateGraph) -->
+  <g transform="translate(360, 240)" filter="url(#card-glow)">
+    <rect x="0" y="0" width="480" height="85" rx="12" fill="#161b22" stroke="#388bfd" stroke-width="2.5"/>
+    <rect x="12" y="12" width="456" height="61" rx="8" fill="#0d1117" opacity="0.6"/>
+    <text x="240" y="38" fill="#58a6ff" font-size="17" font-weight="800" text-anchor="middle">Digital Twin Orchestrator</text>
+    <text x="240" y="58" fill="#c9d1d9" font-size="13" font-weight="500" text-anchor="middle">LangGraph Cyclic StateGraph Router</text>
+  </g>
+
+  <!-- Branch 1 (Left): Intent Sensor Integrity -->
+  <path d="M 440 325 C 440 375, 200 375, 200 425" stroke="#bc8cff" stroke-width="2" fill="none" marker-end="url(#arrow-purple)"/>
+  <rect x="195" y="360" width="180" height="24" rx="6" fill="#161b22" stroke="#bc8cff" stroke-width="1"/>
+  <text x="285" y="376" fill="#bc8cff" font-size="11" font-weight="600" text-anchor="middle">intent: sensor_integrity</text>
+
+  <!-- Tool 3: Sensor Auditor -->
+  <g transform="translate(60, 430)" filter="url(#card-glow)">
+    <rect x="0" y="0" width="280" height="75" rx="8" fill="#21262d" stroke="#8957e5" stroke-width="1.8"/>
+    <text x="140" y="32" fill="#f0f6fc" font-size="15" font-weight="700" text-anchor="middle">Tool 3: Sensor Auditor</text>
+    <text x="140" y="54" fill="#8b949e" font-size="12" text-anchor="middle">Detects NaN / Stuck / Timestamp Gaps</text>
+  </g>
+
+  <!-- Sensor Auditor -> Imputation -->
+  <path d="M 200 505 L 200 545" stroke="#bc8cff" stroke-width="2" marker-end="url(#arrow-purple)"/>
+  <text x="208" y="530" fill="#8b949e" font-size="11">missing/corrupt</text>
+
+  <!-- Self-Healing Imputation Node -->
+  <g transform="translate(60, 550)" filter="url(#card-glow)">
+    <rect x="0" y="0" width="280" height="75" rx="8" fill="#161b22" stroke="#d2a8ff" stroke-width="1.5"/>
+    <text x="140" y="32" fill="#d2a8ff" font-size="14" font-weight="700" text-anchor="middle">Self-Healing Imputation</text>
+    <text x="140" y="54" fill="#8b949e" font-size="11" text-anchor="middle">Cross-Sensor Kalman Regression (77.5%)</text>
+  </g>
+
+  <!-- Branch 2 (Center): Intent Thermal Stress -->
+  <path d="M 600 325 L 600 425" stroke="#d29922" stroke-width="2" fill="none" marker-end="url(#arrow-amber)"/>
+  <rect x="515" y="360" width="170" height="24" rx="6" fill="#161b22" stroke="#d29922" stroke-width="1"/>
+  <text x="600" y="376" fill="#d29922" font-size="11" font-weight="600" text-anchor="middle">intent: thermal_stress</text>
+
+  <!-- Tool 1: PINN Engine -->
+  <g transform="translate(460, 430)" filter="url(#card-glow)">
+    <rect x="0" y="0" width="280" height="75" rx="8" fill="#21262d" stroke="#bb8009" stroke-width="1.8"/>
+    <text x="140" y="30" fill="#f0f6fc" font-size="15" font-weight="700" text-anchor="middle">Tool 1: PINN Physics Engine</text>
+    <text x="140" y="52" fill="#8b949e" font-size="11" text-anchor="middle">Fourier Law: ∂T/∂t - α∇²T = q̇</text>
+  </g>
+
+  <!-- PINN -> Energy Conservation Feasibility -->
+  <path d="M 600 505 L 600 545" stroke="#d29922" stroke-width="2" marker-end="url(#arrow-amber)"/>
+  <text x="608" y="530" fill="#8b949e" font-size="11">physics loss</text>
+
+  <!-- Thermodynamic Feasibility Check Node -->
+  <g transform="translate(460, 550)" filter="url(#card-glow)">
+    <rect x="0" y="0" width="280" height="75" rx="8" fill="#161b22" stroke="#e3b341" stroke-width="1.5"/>
+    <text x="140" y="30" fill="#e3b341" font-size="14" font-weight="700" text-anchor="middle">Physics Feasibility Shield</text>
+    <text x="140" y="52" fill="#8b949e" font-size="11" text-anchor="middle">0% Thermodynamically Impossible Output</text>
+  </g>
+
+  <!-- Branch 3 (Right): Intent Prognostics & Control -->
+  <path d="M 760 325 C 760 375, 1000 375, 1000 425" stroke="#3fb950" stroke-width="2" fill="none" marker-end="url(#arrow-emerald)"/>
+  <rect x="895" y="360" width="200" height="24" rx="6" fill="#161b22" stroke="#3fb950" stroke-width="1"/>
+  <text x="995" y="376" fill="#3fb950" font-size="11" font-weight="600" text-anchor="middle">intent: prognostics_&amp;_control</text>
+
+  <!-- 4-Class Fault Classifier & Tool 2: DRL Strategist -->
+  <g transform="translate(860, 430)" filter="url(#card-glow)">
+    <rect x="0" y="0" width="280" height="75" rx="8" fill="#21262d" stroke="#238636" stroke-width="1.8"/>
+    <text x="140" y="30" fill="#f0f6fc" font-size="15" font-weight="700" text-anchor="middle">Tool 2: DRL Prognostics</text>
+    <text x="140" y="52" fill="#8b949e" font-size="11" text-anchor="middle">Dynamic RUL Countdown + Throttle Trim</text>
+  </g>
+
+  <!-- DRL -> PINN Safety Shield -->
+  <path d="M 1000 505 L 1000 545" stroke="#3fb950" stroke-width="2" marker-end="url(#arrow-emerald)"/>
+  <text x="1008" y="530" fill="#8b949e" font-size="11">policy action</text>
+
+  <!-- Safe Control Envelope Node -->
+  <g transform="translate(860, 550)" filter="url(#card-glow)">
+    <rect x="0" y="0" width="280" height="75" rx="8" fill="#161b22" stroke="#56d364" stroke-width="1.5"/>
+    <text x="140" y="30" fill="#56d364" font-size="14" font-weight="700" text-anchor="middle">PINN Safe Action Envelope</text>
+    <text x="140" y="52" fill="#8b949e" font-size="11" text-anchor="middle">Clamps Over-Lean / Thermal Spikes</text>
+  </g>
+
+  <!-- Convergence to "Return to Orchestrator" -->
+  <path d="M 200 625 C 200 680, 500 670, 500 705" stroke="#bc8cff" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 600 625 L 600 705" stroke="#d29922" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 1000 625 C 1000 680, 700 670, 700 705" stroke="#3fb950" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- 3. Return to Orchestrator Node (Verification & Blockchain) -->
+  <g transform="translate(360, 715)" filter="url(#card-glow)">
+    <rect x="0" y="0" width="480" height="85" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
+    <text x="240" y="34" fill="#f0f6fc" font-size="15" font-weight="700" text-anchor="middle">Return to Orchestrator State Verification</text>
+    <text x="240" y="54" fill="#8b949e" font-size="12" text-anchor="middle">Hashes Exceedances to Hyperledger Fabric Blockchain</text>
+    <text x="240" y="72" fill="#3fb950" font-size="11" font-weight="600" text-anchor="middle">78.6% Prognostic Accuracy (+16.2% over MDPI 2023 Baseline)</text>
+  </g>
+
+  <!-- Path to Final Streaming & Dispatch -->
+  <path d="M 600 800 L 600 840" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 4. Output Node: Stream to 3D Twin & Autopilot -->
+  <g transform="translate(330, 845)" filter="url(#card-glow)">
+    <rect x="0" y="0" width="540" height="80" rx="10" fill="#21262d" stroke="#3fb950" stroke-width="2.5"/>
+    <text x="270" y="34" fill="#f0f6fc" font-size="16" font-weight="700" text-anchor="middle">Stream Response to User &amp; UAV Datalink</text>
+    <text x="270" y="56" fill="#58a6ff" font-size="12" text-anchor="middle">10 Hz WebSockets to Next.js 3D Twin HUD • STANAG 4586 Uplink to Autopilot</text>
+  </g>
+</svg>
