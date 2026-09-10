@@ -52,6 +52,37 @@ document.addEventListener('DOMContentLoaded', () => {
   const archTabBtns = document.querySelectorAll('.arch-tab-btn');
   const archTabPanes = document.querySelectorAll('.arch-tab-pane');
 
+  // Day / Night Tactical Mode Toggle
+  const btnThemeToggle = document.getElementById('btn-theme-toggle');
+  const themeIcon = document.getElementById('theme-icon');
+  const themeText = document.getElementById('theme-text');
+
+  function updateTheme(isLight) {
+    if (isLight) {
+      document.body.classList.add('light-theme');
+      if (themeIcon) themeIcon.textContent = '🌙';
+      if (themeText) themeText.textContent = 'NIGHT MODE';
+      if (window.engine3D) window.engine3D.setTheme('day');
+      localStorage.setItem('tapas_theme', 'light');
+    } else {
+      document.body.classList.remove('light-theme');
+      if (themeIcon) themeIcon.textContent = '☀️';
+      if (themeText) themeText.textContent = 'DAY MODE';
+      if (window.engine3D) window.engine3D.setTheme('night');
+      localStorage.setItem('tapas_theme', 'dark');
+    }
+  }
+
+  if (btnThemeToggle) {
+    const savedTheme = localStorage.getItem('tapas_theme') || 'dark';
+    if (savedTheme === 'light') updateTheme(true);
+
+    btnThemeToggle.addEventListener('click', () => {
+      const isLight = document.body.classList.contains('light-theme');
+      updateTheme(!isLight);
+    });
+  }
+
   // Exploded View Slider Listener
   // Exploded View Slider Listener (0% - 100%)
   if (explodedSlider && explodedVal) {
@@ -403,6 +434,62 @@ document.addEventListener('DOMContentLoaded', () => {
   if (sliderAltitude) sliderAltitude.addEventListener('input', updateEnvironmentalState);
   if (sliderAmbientTemp) sliderAmbientTemp.addEventListener('input', updateEnvironmentalState);
 
+  // Helper for smooth linear interpolation
+  function lerp(a, b, t) {
+    return a + (b - a) * Math.max(0, Math.min(1, t));
+  }
+
+  // Continuous, realistic mission profile keyframes (STANAG 4586 Sortie Replay)
+  const MISSION_KEYFRAMES = [
+    { t: 0,    rpm: 1900, cht: 102.0, egt: 510.0, oil_p: 345, oil_t: 72, vib: 0.90, ff: 4.5, afr: 13.8, rul: 495, ext: 0, arch: 'nominal', conf: 0.99 },
+    { t: 300,  rpm: 2350, cht: 118.0, egt: 560.0, oil_p: 338, oil_t: 79, vib: 1.08, ff: 5.8, afr: 13.8, rul: 490, ext: 0, arch: 'nominal', conf: 0.98 },
+    { t: 900,  rpm: 5450, cht: 166.0, egt: 715.0, oil_p: 310, oil_t: 93, vib: 1.82, ff: 15.2, afr: 13.5, rul: 450, ext: 0, arch: 'nominal', conf: 0.96 },
+    { t: 1500, rpm: 4800, cht: 148.9, egt: 666.1, oil_p: 320, oil_t: 86, vib: 1.20, ff: 9.5, afr: 13.8, rul: 420, ext: 0, arch: 'nominal', conf: 0.97 },
+    { t: 4200, rpm: 4800, cht: 151.5, egt: 671.0, oil_p: 318, oil_t: 88, vib: 1.24, ff: 9.6, afr: 13.8, rul: 380, ext: 0, arch: 'nominal', conf: 0.95 },
+    { t: 4600, rpm: 5200, cht: 214.5, egt: 792.0, oil_p: 285, oil_t: 112, vib: 2.45, ff: 11.2, afr: 15.2, rul: 18, ext: 0, arch: 'thermal_runaway', conf: 0.93 },
+    { t: 5100, rpm: 5050, cht: 202.0, egt: 775.0, oil_p: 282, oil_t: 114, vib: 2.25, ff: 10.6, afr: 14.6, rul: 14, ext: 0, arch: 'thermal_runaway', conf: 0.94 },
+    { t: 5400, rpm: 4450, cht: 172.0, egt: 680.0, oil_p: 310, oil_t: 95, vib: 1.55, ff: 8.8, afr: 12.4, rul: 135, ext: 40, arch: 'thermal_runaway', conf: 0.90 },
+    { t: 5800, rpm: 4380, cht: 166.0, egt: 662.0, oil_p: 315, oil_t: 89, vib: 1.42, ff: 8.2, afr: 12.6, rul: 155, ext: 40, arch: 'thermal_runaway', conf: 0.88 },
+    { t: 6300, rpm: 2050, cht: 110.0, egt: 505.0, oil_p: 330, oil_t: 76, vib: 0.88, ff: 4.2, afr: 13.8, rul: 148, ext: 40, arch: 'nominal', conf: 0.97 }
+  ];
+
+  function getInterpolatedMissionData(sec) {
+    let k0 = MISSION_KEYFRAMES[0];
+    let k1 = MISSION_KEYFRAMES[MISSION_KEYFRAMES.length - 1];
+
+    for (let i = 0; i < MISSION_KEYFRAMES.length - 1; i++) {
+      if (sec >= MISSION_KEYFRAMES[i].t && sec <= MISSION_KEYFRAMES[i + 1].t) {
+        k0 = MISSION_KEYFRAMES[i];
+        k1 = MISSION_KEYFRAMES[i + 1];
+        break;
+      }
+    }
+
+    const span = Math.max(1, k1.t - k0.t);
+    const progress = Math.max(0, Math.min(1, (sec - k0.t) / span));
+
+    // Smooth hermite s-curve for organic aesthetic transitions
+    const t = progress * progress * (3 - 2 * progress);
+
+    return {
+      telemetry: {
+        rpm: lerp(k0.rpm, k1.rpm, t),
+        cht: lerp(k0.cht, k1.cht, t),
+        egt: lerp(k0.egt, k1.egt, t),
+        oil_pressure: lerp(k0.oil_p, k1.oil_p, t),
+        oil_temp: lerp(k0.oil_t, k1.oil_t, t),
+        vibration_rms: lerp(k0.vib, k1.vib, t),
+        fuel_flow: lerp(k0.ff, k1.ff, t),
+        afr: lerp(k0.afr, k1.afr, t),
+      },
+      rul_cycles: Math.round(lerp(k0.rul, k1.rul, t)),
+      adjusted_rul: Math.round(lerp(k0.rul, k1.rul, t) + lerp(k0.ext, k1.ext, t)),
+      extension_cycles: Math.round(lerp(k0.ext, k1.ext, t)),
+      fault_archetype: t > 0.5 ? k1.arch : k0.arch,
+      fault_confidence: lerp(k0.conf, k1.conf, t)
+    };
+  }
+
   function applyMissionTimelineStep(sec) {
     replaySeconds = Math.max(0, Math.min(6300, sec));
     if (replayTimeline) replayTimeline.value = replaySeconds;
@@ -415,56 +502,13 @@ document.addEventListener('DOMContentLoaded', () => {
     phasePills.forEach(pill => {
       const pTime = parseInt(pill.getAttribute('data-time'), 10);
       pill.classList.remove('active');
-      if (Math.abs(replaySeconds - pTime) < 500) {
+      if (Math.abs(replaySeconds - pTime) < 450) {
         pill.classList.add('active');
       }
     });
 
-    // Replay telemetry based on mission profile phase
-    let simData = {
-      telemetry: { rpm: 4800, cht: 148.9, egt: 666.1, oil_pressure: 320, oil_temp: 85, vibration_rms: 1.2, fuel_flow: 9.5, afr: 13.8 },
-      rul_cycles: 380,
-      adjusted_rul: 380,
-      fault_archetype: 'nominal',
-      fault_confidence: 0.94
-    };
-
-    if (replaySeconds < 300) {
-      // Taxi
-      simData.telemetry.rpm = 2200;
-      simData.telemetry.cht = 115.0;
-      simData.telemetry.egt = 540.0;
-      simData.telemetry.vibration_rms = 1.1;
-      simData.rul_cycles = 490;
-    } else if (replaySeconds < 1500) {
-      // Climb
-      simData.telemetry.rpm = 5400;
-      simData.telemetry.cht = 168.0;
-      simData.telemetry.egt = 720.0;
-      simData.telemetry.vibration_rms = 1.85;
-      simData.rul_cycles = 420;
-    } else if (replaySeconds >= 4200 && replaySeconds < 5100) {
-      // Thermal Spike Micro-Fault
-      simData.telemetry.rpm = 5300;
-      simData.telemetry.cht = 214.5;
-      simData.telemetry.egt = 792.0;
-      simData.telemetry.vibration_rms = 2.45;
-      simData.rul_cycles = 14;
-      simData.adjusted_rul = 14;
-      simData.fault_archetype = 'thermal_runaway';
-      simData.fault_confidence = 0.91;
-    } else if (replaySeconds >= 5100 && replaySeconds < 5800) {
-      // DRL De-Rate Active Recovery
-      simData.telemetry.rpm = 4450;
-      simData.telemetry.cht = 172.0;
-      simData.telemetry.egt = 680.0;
-      simData.telemetry.vibration_rms = 1.55;
-      simData.rul_cycles = 135;
-      simData.adjusted_rul = 175;
-      simData.extension_cycles = 40.0;
-      simData.fault_archetype = 'thermal_runaway';
-      simData.fault_confidence = 0.88;
-    }
+    // Smoothly calculate interpolated mission telemetry
+    const simData = getInterpolatedMissionData(replaySeconds);
 
     // Update RUL & Sustain Window for current replay phase
     let timelineStatus = 'OPTIMAL';
@@ -482,6 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       timelineStr = '48h 30m Mission Endurance';
     }
+
     updateRulDisplay(
       simData.adjusted_rul || simData.rul_cycles,
       simData.extension_cycles || 0,
@@ -520,15 +565,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isReplayPlaying) {
         btnReplayPlay.textContent = '⏸ PAUSE';
         btnReplayPlay.classList.add('active');
+        // Calm, readable update rate: ticks every 200ms with smooth progression
         replayInterval = setInterval(() => {
-          applyMissionTimelineStep(replaySeconds + Math.round(1 * replaySpeed));
+          const stepSize = Math.max(1, Math.round(2 * replaySpeed));
+          applyMissionTimelineStep(replaySeconds + stepSize);
           if (replaySeconds >= 6300) {
             isReplayPlaying = false;
             btnReplayPlay.textContent = '▶ PLAY';
             btnReplayPlay.classList.remove('active');
             clearInterval(replayInterval);
           }
-        }, 100);
+        }, 200);
       } else {
         btnReplayPlay.textContent = '▶ PLAY';
         btnReplayPlay.classList.remove('active');
@@ -539,13 +586,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (btnReplayStepBack) {
     btnReplayStepBack.addEventListener('click', () => {
-      applyMissionTimelineStep(replaySeconds - 10);
+      applyMissionTimelineStep(replaySeconds - 30);
     });
   }
 
   if (btnReplayStepFwd) {
     btnReplayStepFwd.addEventListener('click', () => {
-      applyMissionTimelineStep(replaySeconds + 10);
+      applyMissionTimelineStep(replaySeconds + 30);
     });
   }
 

@@ -740,9 +740,37 @@ class AeroEngine3D {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // 5. Pinned 3D Holographic Data Callouts
-  // -------------------------------------------------------------------------
+  setupLighting() {
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    this.scene.add(this.ambientLight);
+
+    this.dirLight1 = new THREE.DirectionalLight(0x38bdf8, 1.3);
+    this.dirLight1.position.set(5, 8, 5);
+    this.scene.add(this.dirLight1);
+
+    this.dirLight2 = new THREE.DirectionalLight(0xf59e0b, 0.7);
+    this.dirLight2.position.set(-5, -3, -5);
+    this.scene.add(this.dirLight2);
+
+    this.gridHelper = new THREE.GridHelper(20, 20, 0x1e293b, 0x0f172a);
+    this.gridHelper.position.y = -1.2;
+    this.scene.add(this.gridHelper);
+  }
+
+  setTheme(theme) {
+    if (theme === 'day' || theme === 'light') {
+      this.scene.background.setHex(0xe2e8f0);
+      if (this.ambientLight) this.ambientLight.intensity = 1.35;
+      if (this.dirLight1) this.dirLight1.intensity = 1.6;
+      if (this.gridHelper) this.gridHelper.material.color.setHex(0x94a3b8);
+    } else {
+      this.scene.background.setHex(0x060911);
+      if (this.ambientLight) this.ambientLight.intensity = 0.9;
+      if (this.dirLight1) this.dirLight1.intensity = 1.3;
+      if (this.gridHelper) this.gridHelper.material.color.setHex(0x1e293b);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // 5. Pinned 3D Holographic Data Callouts (Dynamic Real-Time Canvases)
   // -------------------------------------------------------------------------

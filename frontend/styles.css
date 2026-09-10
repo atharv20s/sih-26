@@ -32,6 +32,130 @@
   --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6);
 }
 
+/* Day / Light Aerospace Tactical Theme */
+body.light-theme {
+  --bg-primary: #f0f4f8;
+  --bg-secondary: #e2e8f0;
+  --bg-card: rgba(255, 255, 255, 0.92);
+  --bg-card-hover: rgba(248, 250, 252, 0.98);
+  --border-card: rgba(14, 165, 233, 0.25);
+  --border-glow: rgba(14, 165, 233, 0.45);
+
+  --accent-cyan: #0284c7;
+  --accent-sky: #0369a1;
+  --accent-blue: #1d4ed8;
+  --accent-emerald: #059669;
+  --accent-amber: #d97706;
+  --accent-rose: #e11d48;
+  --accent-red: #dc2626;
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+
+  --shadow-lg: 0 10px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
+}
+
+body.light-theme::before {
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.12) 0%, transparent 70%);
+}
+
+body.light-theme .top-navbar {
+  background: rgba(248, 250, 252, 0.94);
+  border-bottom: 1px solid rgba(14, 165, 233, 0.25);
+}
+
+body.light-theme .system-title h1 {
+  color: #0f172a;
+}
+
+body.light-theme .hud-panel,
+body.light-theme .center-panel,
+body.light-theme .right-panel,
+body.light-theme .mission-replay-panel {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+body.light-theme .sensor-gauge {
+  background: rgba(241, 245, 249, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+body.light-theme .sensor-gauge:hover {
+  background: rgba(226, 232, 240, 0.9);
+}
+
+body.light-theme .gauge-bar-bg {
+  background: rgba(203, 213, 225, 0.7);
+}
+
+body.light-theme .status-pill {
+  background: rgba(241, 245, 249, 0.9);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #334155;
+}
+
+body.light-theme .header-btn {
+  background: rgba(241, 245, 249, 0.9);
+  color: #0f172a;
+  border-color: rgba(14, 165, 233, 0.35);
+}
+
+body.light-theme .header-btn:hover {
+  background: rgba(226, 232, 240, 1.0);
+}
+
+body.light-theme .hud-viewport-3d {
+  background: radial-gradient(circle at center, #cbd5e1 0%, #94a3b8 100%);
+}
+
+body.light-theme .rul-hero-card {
+  background: linear-gradient(135deg, rgba(241, 245, 249, 0.9), rgba(226, 232, 240, 0.9));
+  border: 1px solid rgba(14, 165, 233, 0.3);
+}
+
+body.light-theme .subassembly-card {
+  background: rgba(241, 245, 249, 0.85);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+body.light-theme .subassembly-card:hover {
+  background: rgba(226, 232, 240, 0.95);
+}
+
+body.light-theme .residual-card {
+  background: rgba(241, 245, 249, 0.85);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+body.light-theme .env-control-card {
+  background: rgba(241, 245, 249, 0.85);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+body.light-theme .timeline-replay-bar {
+  background: rgba(241, 245, 249, 0.9);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+body.light-theme .replay-btn {
+  background: rgba(226, 232, 240, 0.9);
+  color: #0f172a;
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+body.light-theme .replay-btn:hover {
+  background: rgba(203, 213, 225, 1.0);
+}
+
+body.light-theme .replay-speed-select {
+  background: rgba(226, 232, 240, 0.9);
+  color: #0f172a;
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
