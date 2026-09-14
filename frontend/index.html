@@ -42,105 +42,47 @@
     </div>
   </header>
 
+  <!-- NASA Open MCT Master Caution & Warning Annunciator Banner -->
+  <div class="master-caution-banner" id="master-caution-banner">
+    <div class="annunciator-group">
+      <div class="annunciator-box" id="annunciator-caution">
+        <span>CAUTION</span>
+      </div>
+      <div class="annunciator-box" id="annunciator-warning">
+        <span>MASTER WARNING</span>
+      </div>
+      <button class="btn-ack-alarm" id="btn-ack-alarm">ACK ALARM</button>
+    </div>
+    <div class="status-summary-strip">
+      <div class="status-summary-item">
+        <span>TIME CONDUCTOR:</span>
+        <span id="conductor-status-badge" class="conductor-mode-pill mode-live">LIVE (10 Hz)</span>
+      </div>
+      <div class="status-summary-item">
+        <span>MISSION T+:</span>
+        <strong id="mission-t-clock" class="tnum">00:42:15</strong>
+      </div>
+      <div class="status-summary-item">
+        <span>DATA INTEGRITY:</span>
+        <strong id="data-integrity-status" style="color:#3fb950;">100% (AUDITED)</strong>
+      </div>
+    </div>
+  </div>
+
   <!-- Main Dashboard Container -->
   <main class="dashboard-container">
 
-    <!-- Left Sidebar: Live Telemetry Gauges -->
+    <!-- Left Sidebar: Monitored Parameter Rail -->
     <aside class="left-sidebar">
       <div class="hud-panel">
         <div class="panel-title">
-          <span>Aero Sensors Telemetry</span>
-          <span class="panel-badge">10 Hz LIVE</span>
+          <span>Telemetry Parameter Rail</span>
+          <span class="panel-badge">10 Hz TABULAR</span>
         </div>
 
-        <div class="gauge-grid">
-          <!-- RPM -->
-          <div class="sensor-gauge">
-            <div class="gauge-header">
-              <span class="gauge-name">Engine Speed (RPM)</span>
-              <span class="gauge-val" id="val-rpm">4,800 RPM</span>
-            </div>
-            <div class="gauge-bar-bg">
-              <div class="gauge-bar-fill" id="bar-rpm" style="width: 60%;"></div>
-            </div>
-          </div>
-
-          <!-- CHT -->
-          <div class="sensor-gauge">
-            <div class="gauge-header">
-              <span class="gauge-name">Cyl Head Temp (CHT)</span>
-              <span class="gauge-val" id="val-cht">150.0 °C</span>
-            </div>
-            <div class="gauge-bar-bg">
-              <div class="gauge-bar-fill" id="bar-cht" style="width: 44%;"></div>
-            </div>
-          </div>
-
-          <!-- EGT -->
-          <div class="sensor-gauge">
-            <div class="gauge-header">
-              <span class="gauge-name">Exhaust Gas Temp (EGT)</span>
-              <span class="gauge-val" id="val-egt">667.7 °C</span>
-            </div>
-            <div class="gauge-bar-bg">
-              <div class="gauge-bar-fill" id="bar-egt" style="width: 52%;"></div>
-            </div>
-          </div>
-
-          <!-- Oil Pressure -->
-          <div class="sensor-gauge">
-            <div class="gauge-header">
-              <span class="gauge-name">Oil Pressure</span>
-              <span class="gauge-val" id="val-oil_pressure">281.8 kPa</span>
-            </div>
-            <div class="gauge-bar-bg">
-              <div class="gauge-bar-fill" id="bar-oil_pressure" style="width: 50%;"></div>
-            </div>
-          </div>
-
-          <!-- Oil Temp -->
-          <div class="sensor-gauge">
-            <div class="gauge-header">
-              <span class="gauge-name">Oil Temp</span>
-              <span class="gauge-val" id="val-oil_temp">96.4 °C</span>
-            </div>
-            <div class="gauge-bar-bg">
-              <div class="gauge-bar-fill" id="bar-oil_temp" style="width: 48%;"></div>
-            </div>
-          </div>
-
-          <!-- Vibration RMS -->
-          <div class="sensor-gauge">
-            <div class="gauge-header">
-              <span class="gauge-name">Vibration RMS</span>
-              <span class="gauge-val" id="val-vibration_rms">1.41 g</span>
-            </div>
-            <div class="gauge-bar-bg">
-              <div class="gauge-bar-fill" id="bar-vibration_rms" style="width: 32%;"></div>
-            </div>
-          </div>
-
-          <!-- Fuel Flow -->
-          <div class="sensor-gauge">
-            <div class="gauge-header">
-              <span class="gauge-name">Fuel Flow Rate</span>
-              <span class="gauge-val" id="val-fuel_flow">8.30 L/h</span>
-            </div>
-            <div class="gauge-bar-bg">
-              <div class="gauge-bar-fill" id="bar-fuel_flow" style="width: 36%;"></div>
-            </div>
-          </div>
-
-          <!-- AFR -->
-          <div class="sensor-gauge">
-            <div class="gauge-header">
-              <span class="gauge-name">Air-to-Fuel Ratio</span>
-              <span class="gauge-val" id="val-afr">13.80 :1</span>
-            </div>
-            <div class="gauge-bar-bg">
-              <div class="gauge-bar-fill" id="bar-afr" style="width: 55%;"></div>
-            </div>
-          </div>
+        <!-- Dynamically populated ParameterRows with canvas sparklines & limit bars -->
+        <div class="param-rail" id="param-rail-container">
+          <!-- Rendered by app.js from LIMITS & TelemetryStore -->
         </div>
       </div>
 
@@ -246,6 +188,29 @@
           </div>
         </div>
 
+        <!-- Native Cross-Section Clipping Controls -->
+        <div class="viewport-clipping-controls" id="viewport-clipping-controls">
+          <div class="clip-title">
+            <span>CROSS-SECTION SLICING</span>
+            <span style="color:#6b7785; font-size:9px;">CAD/X-RAY</span>
+          </div>
+          <div class="clip-row">
+            <input type="checkbox" id="clip-chk-x">
+            <span class="clip-axis-label">X</span>
+            <input type="range" id="clip-slide-x" min="-3" max="3" step="0.05" value="0" class="clip-slider">
+          </div>
+          <div class="clip-row">
+            <input type="checkbox" id="clip-chk-y">
+            <span class="clip-axis-label">Y</span>
+            <input type="range" id="clip-slide-y" min="-3" max="3" step="0.05" value="0" class="clip-slider">
+          </div>
+          <div class="clip-row">
+            <input type="checkbox" id="clip-chk-z">
+            <span class="clip-axis-label">Z</span>
+            <input type="range" id="clip-slide-z" min="-3" max="3" step="0.05" value="0" class="clip-slider">
+          </div>
+        </div>
+
         <!-- Heatmap Color Legend -->
         <div class="heatmap-legend">
           <span>VOLUMETRIC THERMAL GRADIENT (CHT & EGT)</span>
@@ -261,94 +226,60 @@
         </div>
       </div>
 
-      <!-- Mission Replay & Environmental Simulation Panel (Feature 3) -->
-      <div class="mission-replay-panel" id="mission-replay-panel">
-        <div style="display: flex; gap: 14px; align-items: stretch;">
-          <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
-            <div class="replay-header">
-              <div class="replay-title-wrap">
-                <span class="replay-icon">🎛️</span>
-                <span class="replay-title">Mission Replay & Environmental Simulation</span>
-                <span class="replay-badge">STANAG 4586 RECORDER</span>
-              </div>
-              <div class="replay-clock-wrap">
-                <span class="clock-label">MISSION ELAPSED TIME:</span>
-                <span class="replay-clock" id="replay-clock">T+00:42:15</span>
-              </div>
-            </div>
-
-            <!-- Row 1: Environmental & Atmospheric In-Situ Controls -->
-            <div class="env-controls-grid">
-              <div class="env-control-card">
-                <div class="env-card-header">
-                  <span class="env-label">✈️ Altitude (At Flight Ceiling)</span>
-                  <span class="env-value" id="val-altitude">12,500 ft</span>
-                </div>
-                <input type="range" id="slider-altitude" min="0" max="20000" step="250" value="12500"
-                  class="env-slider">
-                <div class="env-meta-row">
-                  <span id="env-density">Air Density: 0.812 kg/m³</span>
-                  <span id="env-pressure">Pressure: 18.75 inHg</span>
-                </div>
-              </div>
-
-              <div class="env-control-card">
-                <div class="env-card-header">
-                  <span class="env-label">🌡️ Ambient Temp Temperature</span>
-                  <span class="env-value" id="val-ambient-temp">+15.0 °C</span>
-                </div>
-                <input type="range" id="slider-ambient-temp" min="-40" max="50" step="1" value="15"
-                  class="env-slider temp-slider">
-                <div class="env-meta-row">
-                  <span id="env-condition">Condition: ISA Standard Day</span>
-                  <span id="env-convection">Cooling Factor: 1.00x</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Row 2: Timeline Scrubber & Replay Playback Controls -->
-            <div class="timeline-replay-bar">
-              <div class="playback-btn-group">
-                <button class="replay-btn" id="btn-replay-step-back" title="Rewind 10 seconds">⏮ -10s</button>
-                <button class="replay-btn play-btn" id="btn-replay-play" title="Play/Pause Replay">▶ PLAY</button>
-                <button class="replay-btn" id="btn-replay-step-fwd" title="Forward 10 seconds">⏭ +10s</button>
-                <select id="select-replay-speed" class="replay-speed-select">
-                  <option value="0.5">0.5x</option>
-                  <option value="1.0" selected>1.0x Real-Time</option>
-                  <option value="2.0">2.0x Fast</option>
-                  <option value="5.0">5.0x Warp</option>
-                </select>
-              </div>
-
-              <div class="scrubber-wrap">
-                <div class="scrubber-time-row">
-                  <span id="scrubber-current-time">00:42:15</span>
-                  <div class="mission-phases">
-                    <span class="phase-pill" data-time="300">Taxi</span>
-                    <span class="phase-pill" data-time="1500">Climb</span>
-                    <span class="phase-pill active" data-time="2520">Cruise</span>
-                    <span class="phase-pill alert" data-time="4500">Thermal Spike</span>
-                    <span class="phase-pill green" data-time="5400">DRL De-Rate</span>
-                    <span class="phase-pill" data-time="6300">RTB</span>
-                  </div>
-                  <span>01:45:00</span>
-                </div>
-                <input type="range" id="replay-timeline" min="0" max="6300" step="1" value="2535"
-                  class="timeline-slider">
-              </div>
-            </div>
+      <!-- Multi-Channel Strip Charts Panel (NASA Open MCT Standard) -->
+      <div class="strip-charts-panel">
+        <div class="strip-charts-header">
+          <div class="strip-title-wrap">
+            <span>MULTI-CHANNEL STRIP CHARTS</span>
+            <span style="font-size:9px; color:#8b949e;">(120 s SYNCHRONIZED TIME AXIS WITH LIMIT BANDS)</span>
           </div>
-
-          <!-- Bottom-Right View Manager Panel (matching image_2.png) -->
-          <div class="mission-view-manager">
-            <div class="mvm-title">VIEW MANAGER</div>
-            <div class="mvm-btn-group">
-              <button class="mvm-btn active" data-view="overview">AIRCRAFT OVERVIEW</button>
-              <button class="mvm-btn" data-view="propulsion">PROPULSION UNIT</button>
-              <button class="mvm-btn" data-view="systems">SYSTEM DIAGRAMS</button>
+          <div class="strip-legend-row">
+            <div class="strip-legend-item">
+              <span class="strip-legend-dot" style="background:#f59e0b;"></span>
+              <span>CHT:</span>
+              <strong id="strip-val-cht" class="strip-legend-val">150.0 °C</strong>
+            </div>
+            <div class="strip-legend-item">
+              <span class="strip-legend-dot" style="background:#f97316;"></span>
+              <span>EGT:</span>
+              <strong id="strip-val-egt" class="strip-legend-val">667.7 °C</strong>
+            </div>
+            <div class="strip-legend-item">
+              <span class="strip-legend-dot" style="background:#c084fc;"></span>
+              <span>VIB:</span>
+              <strong id="strip-val-vib" class="strip-legend-val">1.41 g</strong>
+            </div>
+            <div class="strip-legend-item">
+              <span class="strip-legend-dot" style="background:#38bdf8;"></span>
+              <span>OIL P:</span>
+              <strong id="strip-val-oil" class="strip-legend-val">281.8 kPa</strong>
             </div>
           </div>
         </div>
+        <div class="strip-canvas-wrap">
+          <canvas id="strip-chart-canvas" class="strip-chart-canvas"></canvas>
+        </div>
+      </div>
+
+      <!-- NASA Open MCT Time Conductor (Bidirectional Live / Fixed Scrubber) -->
+      <div class="time-conductor-bar">
+        <div class="conductor-mode-pill mode-live" id="btn-conductor-mode" title="Click to freeze historical window or resume live streaming">
+          LIVE (NOW)
+        </div>
+        <button class="replay-btn" id="btn-conductor-step-back" title="Rewind 10 seconds">⏮ -10s</button>
+        <button class="replay-btn play-btn" id="btn-conductor-play-pause">⏸ FREEZE</button>
+        <button class="replay-btn" id="btn-conductor-step-fwd" title="Forward 10 seconds">⏭ +10s</button>
+        <div class="conductor-scrubber-wrap">
+          <div class="conductor-scrubber-meta">
+            <span id="conductor-time-start">-120s</span>
+            <span id="conductor-time-current" style="color:#58a6ff; font-weight:700;">LIVE (T+00:42:15)</span>
+            <span id="conductor-time-end">NOW</span>
+          </div>
+          <input type="range" id="conductor-timeline" min="0" max="1200" step="1" value="1200" class="conductor-slider">
+        </div>
+        <button class="replay-btn" id="btn-conductor-resume" style="background:rgba(63,185,80,0.18); border-color:#3fb950; color:#3fb950;">
+          RESUME LIVE
+        </button>
       </div>
     </section>
 
@@ -471,20 +402,15 @@
         </div>
       </div>
 
-      <!-- Sensor Auditor Status -->
+      <!-- Dedicated Event Log (NASA Open MCT Standard) -->
       <div class="hud-panel">
         <div class="panel-title">
-          <span>Sensor Auditor (LangGraph)</span>
-          <span class="panel-badge">TOOL 3</span>
+          <span>Mission Events & State Transitions</span>
+          <span class="panel-badge" id="event-count-badge">0 EVENTS</span>
         </div>
-        <div class="ai-detail-group">
-          <div class="ai-detail-row">
-            <span class="ai-detail-label">Payload Sanitization</span>
-            <span class="ai-detail-val status-badge-ok">ZERO SILENT DROPS</span>
-          </div>
-          <div class="ai-detail-row">
-            <span class="ai-detail-label">Edge Self-Corrections</span>
-            <span class="ai-detail-val status-badge-cyan" id="audit-recoveries">6,110</span>
+        <div class="event-log-container" id="event-log-container">
+          <div style="color:#6b7785; font-size:10px; padding:8px 4px; text-align:center;">
+            System nominal. Monitoring state transitions...
           </div>
         </div>
       </div>
@@ -840,9 +766,9 @@
     </div>
   </div>
 
-  <script src="/static/engine_3d.js?v=20260910_01"></script>
-  <script src="/static/app.js?v=20260910_01"></script>
-  <script src="/static/engine_3d_p1.js?v=20260914_p1"></script>
+  <script src="/static/engine_3d.js?v=20260914_02"></script>
+  <script type="module" src="/static/telemetry_store.js?v=20260914_02"></script>
+  <script type="module" src="/static/app.js?v=20260914_02"></script>
 </body>
 
 </html>

@@ -33,6 +33,14 @@ class AeroEngine3D {
     this.targetCameraPos = new THREE.Vector3(0, 3.4, 7.2);
     this.targetLookAt = new THREE.Vector3(0.1, 0.1, 0);
 
+    // Native clipping planes for internal cross-section inspection
+    this.clipPlanes = {
+      x: new THREE.Plane(new THREE.Vector3(1, 0, 0), 4.0),
+      y: new THREE.Plane(new THREE.Vector3(0, 1, 0), 4.0),
+      z: new THREE.Plane(new THREE.Vector3(0, 0, 1), 4.0),
+    };
+    this.clipEnabled = { x: false, y: false, z: false };
+
     this.initScene();
     this.initThermalShaders();
     this.buildTapasAirframe();
@@ -40,6 +48,7 @@ class AeroEngine3D {
     this.buildBatteryPack();
     this.buildFuelOilLoop();
     this.setupLighting();
+    this.setupSensorNodes();
     this.setupPinnedCallouts();
     this.animate();
 
@@ -62,6 +71,7 @@ class AeroEngine3D {
       alpha: true,
       powerPreference: "high-performance"
     });
+    this.renderer.localClippingEnabled = true;
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
@@ -192,7 +202,8 @@ class AeroEngine3D {
           uTime: this.thermalUniforms.uTime,
           uPartType: { value: partType }
         },
-        side: THREE.DoubleSide
+        side: THREE.DoubleSide,
+        clipping: true
       });
     };
   }
@@ -772,10 +783,129 @@ class AeroEngine3D {
   }
 
   // -------------------------------------------------------------------------
-  // 5. Pinned 3D Holographic Data Callouts (Dynamic Real-Time Canvases)
+  // 5. Native 3D Sensor Node Markers & Clipping Control
   // -------------------------------------------------------------------------
+  setupSensorNodes() {
+    this.sensorNodes = {};
+    const sensorDefs = [
+      { id: 'cht', name: 'CHT Sensor', pos: new THREE.Vector3(-0.55, 0.42, 0.0), defaultColor: 0x3fb950 },
+      { id: 'egt', name: 'EGT Probe', pos: new THREE.Vector3(0.90, -0.10, 0.0), defaultColor: 0x3fb950 },
+      { id: 'oil_pressure', name: 'Oil Pressure', pos: new THREE.Vector3(0.0, -0.55, 0.25), defaultColor: 0x3fb950 },
+      { id: 'vibration_rms', name: 'Vibration RMS', pos: new THREE.Vector3(-0.30, 0.10, 0.55), defaultColor: 0x3fb950 },
+      { id: 'oil_temp', name: 'Oil Temp', pos: new THREE.Vector3(0.0, -0.55, -0.25), defaultColor: 0x3fb950 },
+    ];
+
+    const group = new THREE.Group();
+    group.name = 'sensor_nodes_group';
+
+    sensorDefs.forEach(def => {
+      const geom = new THREE.SphereGeometry(0.05, 16, 16);
+      const mat = new THREE.MeshStandardMaterial({
+        color: def.defaultColor,
+        emissive: def.defaultColor,
+        emissiveIntensity: 0.8,
+        roughness: 0.3,
+        metalness: 0.5
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.copy(def.pos);
+
+      // Beacon halo ring
+      const ringGeom = new THREE.RingGeometry(0.065, 0.085, 24);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: def.defaultColor,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7
+      });
+      const ring = new THREE.Mesh(ringGeom, ringMat);
+      ring.rotation.x = Math.PI / 2;
+      mesh.add(ring);
+
+      group.add(mesh);
+      this.sensorNodes[def.id] = { mesh, ring, mat, ringMat, basePos: def.pos.clone(), state: 0 };
+    });
+
+    this.scene.add(group);
+  }
+
+  updateSensorNodeStates(telemetry, alarmMap = null) {
+    if (!this.sensorNodes || !telemetry) return;
+
+    const evalChannel = (ch, val) => {
+      if (alarmMap && alarmMap[ch] !== undefined) return alarmMap[ch];
+      if (ch === 'cht') return val >= 210 ? 3 : (val >= 185 ? 1 : 0);
+      if (ch === 'egt') return val >= 800 ? 3 : (val >= 740 ? 1 : 0);
+      if (ch === 'vibration_rms') return val >= 3.5 ? 3 : (val >= 2.5 ? 1 : 0);
+      if (ch === 'oil_pressure') return val <= 180 ? 3 : (val <= 220 ? 1 : 0);
+      if (ch === 'oil_temp') return val >= 140 ? 3 : (val >= 120 ? 1 : 0);
+      return 0;
+    };
+
+    const colorForState = (st) => {
+      if (st >= 3) return 0xf85149; // Critical red
+      if (st >= 1) return 0xd29922; // Caution amber
+      return 0x3fb950; // Nominal green/grey
+    };
+
+    for (const [id, node] of Object.entries(this.sensorNodes)) {
+      const val = telemetry[id];
+      if (val === undefined || Number.isNaN(val)) continue;
+      const st = evalChannel(id, val);
+      node.state = st;
+      const hex = colorForState(st);
+      node.mat.color.setHex(hex);
+      node.mat.emissive.setHex(hex);
+      node.mat.emissiveIntensity = st >= 3 ? 1.5 : (st >= 1 ? 1.0 : 0.6);
+      node.ringMat.color.setHex(hex);
+      node.ringMat.opacity = st >= 3 ? 0.95 : (st >= 1 ? 0.75 : 0.4);
+    }
+  }
+
+  setClippingPlane(axis, enabled, constant) {
+    if (!this.clipPlanes[axis]) return;
+    this.clipEnabled[axis] = enabled;
+    this.clipPlanes[axis].constant = constant;
+    this.applyClipping();
+  }
+
+  applyClipping() {
+    const active = [];
+    if (this.clipEnabled.x) active.push(this.clipPlanes.x);
+    if (this.clipEnabled.y) active.push(this.clipPlanes.y);
+    if (this.clipEnabled.z) active.push(this.clipPlanes.z);
+
+    this.scene.traverse((obj) => {
+      if (obj.isMesh && obj.material) {
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach((m) => {
+            m.clippingPlanes = active;
+            m.clipShadows = true;
+          });
+        } else {
+          obj.material.clippingPlanes = active;
+          obj.material.clipShadows = true;
+        }
+      }
+    });
+  }
+
+  applyHistoricalFrame(frame) {
+    if (!frame || !frame.telemetry) return;
+    const tel = frame.telemetry;
+    this.rpm = tel.rpm || 4535.4;
+    this.cht = tel.cht || 148.6;
+    this.egt = tel.egt || 667.7;
+    if (this.thermalUniforms) {
+      this.thermalUniforms.uCht.value = this.cht;
+      this.thermalUniforms.uEgt.value = this.egt;
+    }
+    this.updateSensorNodeStates(tel);
+  }
+
   setupPinnedCallouts() {
     this.callouts = {};
+    this.showCallouts = false; // Hidden by default in operational ground-station mode
 
     const createDynamicCallout = (id, title, lines, color = '#38bdf8') => {
       const canvas = document.createElement('canvas');
@@ -947,8 +1077,11 @@ class AeroEngine3D {
         this.thermalUniforms.uEgt.value = this.egt;
       }
 
-      // Update 3D Pinned Callouts in Real-Time
-      if (this.callouts) {
+      // Update 3D Physical Sensor Nodes
+      this.updateSensorNodeStates(tel);
+
+      // Update 3D Pinned Callouts (if enabled)
+      if (this.showCallouts && this.callouts) {
         // 1. Airframe Vibration Callout
         const vibColor = vib >= 3.5 ? '#f43f5e' : (vib >= 2.4 ? '#f59e0b' : '#38bdf8');
         const freqHz = Math.round(this.rpm / 60.0);
@@ -1106,6 +1239,17 @@ class AeroEngine3D {
         const pos = this.loopCurve.getPointAt(t);
         p.mesh.position.copy(pos);
       });
+    }
+
+    // Animate sensor beacon rings pulse
+    if (this.sensorNodes) {
+      const pulse = 1.0 + 0.22 * Math.sin(elapsedTime * 4.5);
+      for (const node of Object.values(this.sensorNodes)) {
+        if (node.ring) {
+          const s = node.state >= 3 ? (1.0 + 0.45 * Math.sin(elapsedTime * 8.0)) : pulse;
+          node.ring.scale.set(s, s, 1);
+        }
+      }
     }
 
     this.controls.update();

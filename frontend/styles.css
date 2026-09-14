@@ -301,11 +301,11 @@ body::before {
 /* Main Dashboard Grid */
 .dashboard-container {
   display: grid;
-  grid-template-columns: 310px 1fr 340px;
+  grid-template-columns: 380px 1fr 340px;
   grid-template-rows: 1fr 72px;
   gap: 14px;
   padding: 14px;
-  height: calc(100vh - 62px);
+  height: calc(100vh - 100px);
   position: relative;
   z-index: 10;
 }
@@ -1795,4 +1795,550 @@ body::before {
   height: 6px;
   accent-color: var(--accent-sky);
   cursor: pointer;
+}
+
+/* ==========================================================================
+   NASA Open MCT Operational Mission Control Design System & Component Styles
+   ========================================================================== */
+
+/* Tabular Numerics Utility */
+.tnum,
+.param-val,
+.replay-clock,
+.rul-number,
+.gauge-val,
+.strip-legend-val {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Master Caution & Warning Annunciator Banner */
+.master-caution-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0a0e14;
+  border-bottom: 2px solid #1e2733;
+  padding: 4px 18px;
+  min-height: 38px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+  z-index: 50;
+}
+
+.annunciator-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.annunciator-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #6b7785;
+  border: 1px solid #1e2733;
+  transition: all 0.2s ease;
+}
+
+.annunciator-box.caution-active {
+  background: rgba(210, 153, 34, 0.2);
+  border-color: #d29922;
+  color: #d29922;
+  box-shadow: 0 0 10px rgba(210, 153, 34, 0.35);
+  animation: pulse-caution 1.2s infinite;
+}
+
+.annunciator-box.warning-active {
+  background: rgba(248, 81, 73, 0.25);
+  border-color: #f85149;
+  color: #f85149;
+  box-shadow: 0 0 14px rgba(248, 81, 73, 0.45);
+  animation: pulse-warning 0.8s infinite;
+}
+
+@keyframes pulse-caution {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.btn-ack-alarm {
+  background: #1e2733;
+  border: 1px solid #2c3849;
+  color: #c8d1dc;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: all 0.15s ease;
+}
+
+.btn-ack-alarm:hover {
+  background: #2c3849;
+  color: #fff;
+  border-color: #58a6ff;
+}
+
+.btn-ack-alarm.needs-ack {
+  background: rgba(248, 81, 73, 0.2);
+  border-color: #f85149;
+  color: #f85149;
+  animation: pulse-ack 1s infinite;
+}
+
+@keyframes pulse-ack {
+  0%, 100% { border-color: #f85149; }
+  50% { border-color: #ffffff; }
+}
+
+.status-summary-strip {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #8b949e;
+  font-size: 11px;
+}
+
+.status-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-summary-item strong {
+  color: #c8d1dc;
+}
+
+/* Monitored Parameter Rail (Left Column) */
+.param-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.param-row {
+  display: grid;
+  grid-template-columns: 88px 58px 38px 48px 1fr 48px;
+  align-items: center;
+  gap: 4px;
+  background: rgba(18, 24, 33, 0.85);
+  border: 1px solid #1e2733;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.param-row:hover {
+  border-color: #2c3849;
+  background: rgba(22, 31, 43, 0.95);
+}
+
+.param-row.state-caution {
+  border-color: rgba(210, 153, 34, 0.6);
+  background: rgba(210, 153, 34, 0.08);
+}
+
+.param-row.state-critical {
+  border-color: rgba(248, 81, 73, 0.7);
+  background: rgba(248, 81, 73, 0.12);
+}
+
+.param-label-wrap {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.param-label {
+  font-weight: 600;
+  color: #c8d1dc;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  font-size: 11px;
+}
+
+.param-subtag {
+  font-size: 9px;
+  color: #6b7785;
+  font-family: var(--font-mono);
+}
+
+.param-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  text-align: right;
+  letter-spacing: -0.02em;
+}
+
+.param-val.imputed {
+  font-style: italic;
+  color: #38bdf8;
+  text-decoration: underline dotted #38bdf8;
+}
+
+.param-unit {
+  font-size: 10px;
+  color: #8b949e;
+  font-family: var(--font-mono);
+}
+
+.param-trend {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.param-trend.up { color: #f0883e; }
+.param-trend.down { color: #38bdf8; }
+.param-trend.flat { color: #6b7785; }
+
+.param-sparkline-wrap {
+  width: 60px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
+
+.param-sparkline-canvas {
+  width: 60px;
+  height: 20px;
+  display: block;
+}
+
+.param-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 40px;
+}
+
+.param-bar-bg {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.param-bar-fill {
+  height: 100%;
+  background: #3fb950;
+  border-radius: 2px;
+  transition: width 0.1s linear, background-color 0.2s ease;
+}
+
+.param-bar-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #f85149;
+  opacity: 0.8;
+  z-index: 2;
+}
+
+.param-state-chip {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 2px 4px;
+  border-radius: 3px;
+  text-align: center;
+  letter-spacing: 0.03em;
+  background: rgba(255, 255, 255, 0.05);
+  color: #8b949e;
+  border: 1px solid #1e2733;
+}
+
+.param-state-chip.nominal {
+  color: #3fb950;
+  border-color: rgba(63, 185, 80, 0.3);
+}
+
+.param-state-chip.caution {
+  background: rgba(210, 153, 34, 0.18);
+  color: #d29922;
+  border-color: #d29922;
+}
+
+.param-state-chip.critical {
+  background: rgba(248, 81, 73, 0.22);
+  color: #f85149;
+  border-color: #f85149;
+}
+
+.param-imp-tag {
+  display: inline-block;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  font-size: 8px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 0 3px;
+  border-radius: 2px;
+  margin-left: 3px;
+}
+
+/* Native Clipping Plane Controls in Viewport */
+.viewport-clipping-controls {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  background: rgba(10, 14, 20, 0.92);
+  border: 1px solid #1e2733;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #c8d1dc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 15;
+  backdrop-filter: blur(8px);
+  min-width: 185px;
+}
+
+.clip-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #58a6ff;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.clip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clip-axis-label {
+  width: 14px;
+  font-weight: 700;
+}
+
+.clip-slider {
+  flex: 1;
+  height: 4px;
+  accent-color: #58a6ff;
+  cursor: pointer;
+}
+
+/* Multi-Channel Strip Charts Panel */
+.strip-charts-panel {
+  background: #0a0e14;
+  border-top: 1px solid #1e2733;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.strip-charts-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.strip-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #c8d1dc;
+}
+
+.strip-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 10px;
+}
+
+.strip-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.strip-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.strip-canvas-wrap {
+  width: 100%;
+  height: 95px;
+  position: relative;
+  background: #07090e;
+  border: 1px solid #161f2b;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.strip-chart-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* NASA Open MCT Time Conductor */
+.time-conductor-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #121821;
+  border: 1px solid #1e2733;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+}
+
+.conductor-mode-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.conductor-mode-pill.mode-live {
+  background: rgba(63, 185, 80, 0.2);
+  color: #3fb950;
+  border: 1px solid #3fb950;
+  box-shadow: 0 0 8px rgba(63, 185, 80, 0.25);
+}
+
+.conductor-mode-pill.mode-fixed {
+  background: rgba(210, 153, 34, 0.25);
+  color: #d29922;
+  border: 1px solid #d29922;
+  box-shadow: 0 0 10px rgba(210, 153, 34, 0.35);
+}
+
+.conductor-scrubber-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conductor-scrubber-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: #8b949e;
+}
+
+.conductor-slider {
+  width: 100%;
+  height: 5px;
+  accent-color: #58a6ff;
+  cursor: pointer;
+}
+
+.conductor-slider.fixed-active {
+  accent-color: #d29922;
+}
+
+/* Dedicated Event Log Panel (Right Rail) */
+.event-log-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #2c3849 #0d121a;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding-right: 4px;
+}
+
+.event-log-entry {
+  display: grid;
+  grid-template-columns: 55px 65px 1fr;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  background: rgba(18, 24, 33, 0.6);
+  border-left: 3px solid #1e2733;
+  transition: background 0.15s ease;
+}
+
+.event-log-entry:hover {
+  background: rgba(26, 36, 50, 0.85);
+}
+
+.event-log-entry.ev-caution {
+  border-left-color: #d29922;
+  background: rgba(210, 153, 34, 0.08);
+}
+
+.event-log-entry.ev-critical {
+  border-left-color: #f85149;
+  background: rgba(248, 81, 73, 0.12);
+}
+
+.event-log-entry.ev-nominal {
+  border-left-color: #3fb950;
+}
+
+.event-time-tag {
+  color: #6b7785;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.event-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 2px;
+  text-align: center;
+}
+
+.event-badge.caution { background: #d29922; color: #0a0e14; }
+.event-badge.critical { background: #f85149; color: #fff; }
+.event-badge.nominal { background: #3fb950; color: #0a0e14; }
+
+.event-text {
+  color: #c8d1dc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
