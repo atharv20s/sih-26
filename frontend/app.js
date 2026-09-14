@@ -13,6 +13,8 @@
 document.addEventListener('DOMContentLoaded', () => {
   // Initialize 3D Engine
   const engine3D = new AeroEngine3D('webgl-canvas');
+  window._engine3D = engine3D;
+  window.dispatchEvent(new CustomEvent('engine3dReady', { detail: engine3D }));
 
   // DOM Elements
   const explodedSlider = document.getElementById('exploded-slider');
@@ -280,14 +282,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const extHours = ext * 0.1;
     const extHrs = Math.floor(extHours);
     const extMins = Math.round((extHours - extHrs) * 60);
-    const extTimeStr = ext > 0 ? `(+${extHrs > 0 ? extHrs + 'h ' : ''}${extMins}m Saved)` : '';
+    const extTimeStr = ext > 1.0 ? `(+${extHrs > 0 ? extHrs + 'h ' : ''}${extMins}m Saved)` : '';
 
     if (rulExtension) {
-      rulExtension.textContent = ext > 0 ? `+${ext.toFixed(1)} cyc (DRL Protected)` : `Nominal Cruise`;
+      rulExtension.textContent = ext > 1.0 ? `+${ext.toFixed(1)} cyc (DRL Protected)` : `Nominal Cruise`;
     }
     if (rulTimeExt) {
       rulTimeExt.textContent = extTimeStr;
-      rulTimeExt.style.display = ext > 0 ? 'inline' : 'none';
+      rulTimeExt.style.display = ext > 1.0 ? 'inline' : 'none';
     }
 
     // Alert thresholds and status pills
@@ -615,23 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', async () => {
       const faultType = btn.getAttribute('data-fault');
       injectBtns.forEach(b => b.classList.remove('active'));
-
-      if (faultType) {
-        btn.classList.add('active');
-      }
-
-      // Immediate instant visual feedback for user & classroom demonstration
-      if (faultType === 'thermal_shock') {
-        updateRulDisplay(14, 35.0, false, "⚠️ 1h 24m EMERGENCY RTB WINDOW", "CRITICAL_RTB");
-      } else if (faultType === 'oil_leak') {
-        updateRulDisplay(22, 25.0, false, "⚠️ 2h 12m EMERGENCY RTB WINDOW", "CRITICAL_RTB");
-      } else if (faultType === 'vibration_spike') {
-        updateRulDisplay(28, 28.0, false, "⚠️ 2h 48m EMERGENCY RTB WINDOW", "CRITICAL_RTB");
-      } else if (faultType === 'sensor_drift' || faultType === 'sensor_dropout') {
-        updateRulDisplay(380, 15.0, false, "38h 00m Degraded Sensor", "ELEVATED_WEAR");
-      } else {
-        updateRulDisplay(485, 15.0, true, "48h 30m Mission Endurance", "OPTIMAL");
-      }
+      btn.classList.add('active');
 
       try {
         await fetch('/api/simulate/inject', {
@@ -792,6 +778,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 1. Update 3D viewport
         engine3D.updateTelemetryState(data);
+        if (window._engine3DExtension) {
+          window._engine3DExtension.onPayload(data);
+        }
 
         // 2. Update Gauges
         if (data.telemetry) {

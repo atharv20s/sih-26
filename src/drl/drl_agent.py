@@ -1,7 +1,8 @@
 """Deep Reinforcement Learning (DRL) Prognostic Strategist (SIH26054).
 
 Actor-Critic (PPO) agent for real-time aero piston engine prognostic intervention:
-  - State Space (S): 15-dim state including PINN physical gradient + sensor streams + RUL.
+  - State Space (S): 18-dim — 14 sensor/PINN dims + 4-dim archetype one-hot.
+                    (Expanded from 15 so the policy learns archetype-specific strategies.)
   - Action Space (A): Continuous [delta_throttle, delta_mixture] recommendations.
   - PINN Safety Shield: Enforces zero-tolerance boundary violations during flight.
   - Generates actionable operational advice to prolong Remaining Useful Life.
@@ -68,7 +69,7 @@ def train_drl_agent(episodes: int = 120, steps_per_rollout: int = 200, lr: float
     print(f"[DRL Prognostic Strategist] Training on device: {device}")
 
     env = AeroEngineEnv(max_cycles=300)
-    policy = ActorCritic(state_dim=15, action_dim=2, hidden_dim=64).to(device)
+    policy = ActorCritic(state_dim=18, action_dim=2, hidden_dim=64).to(device)
     optimizer = torch.optim.Adam(policy.parameters(), lr=lr)
 
     archetypes = ["cht_over", "vibration_over", "oil_starvation", "egt_over"]
@@ -155,7 +156,7 @@ def train_drl_agent(episodes: int = 120, steps_per_rollout: int = 200, lr: float
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     torch.save({
         "state_dict": policy.state_dict(),
-        "state_dim": 15,
+        "state_dim": 18,
         "action_dim": 2,
         "avg_endurance": float(np.mean(episode_durations[-20:])),
     }, ckpt_dir / "drl_policy.pt")

@@ -90,7 +90,13 @@ def make_loader(X: np.ndarray, y: np.ndarray, mask: np.ndarray,
 # ---------------------------------------------------------------------------
 def train_loop(model, train_ld, val_ld, *, epochs, lr, device,
                is_pinn=False, label="model", log_every=5, rul_cap=RUL_CAP):
-    """Train one model. Returns (best_state_dict, history_list)."""
+    """Train one model. Returns (best_state_dict, history_list).
+
+    For PINN models, the physics-loss weights (lambda_fourier, lambda_consistency)
+    are linearly ramped from 0 → full over the first 30% of epochs.  Starting at
+    full weight causes the Fourier loss to dominate before a usable RUL surface
+    exists, which is a well-known PINN convergence failure mode.
+    """
     opt   = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
 
@@ -98,7 +104,18 @@ def train_loop(model, train_ld, val_ld, *, epochs, lr, device,
     best_state = None
     history    = []
 
+    # Store the target physics-loss weights so we can ramp them.
+    base_lf = getattr(model, "lambda_fourier",    0.01)  if is_pinn else 0.0
+    base_lc = getattr(model, "lambda_consistency", 0.005) if is_pinn else 0.0
+    warmup_epochs = max(1, int(0.30 * epochs))
+
     for ep in range(epochs):
+        # ---- λ warm-up: ramp physics loss weight linearly -------------------
+        if is_pinn:
+            warmup_frac = min(1.0, (ep + 1) / warmup_epochs)
+            model.lambda_fourier     = base_lf * warmup_frac
+            model.lambda_consistency = base_lc * warmup_frac
+
         # ---- train ----------------------------------------------------------
         model.train()
         ep_loss = []
@@ -135,6 +152,7 @@ def train_loop(model, train_ld, val_ld, *, epochs, lr, device,
         if is_pinn:
             row["data_loss"]    = float(np.mean(ep_data))
             row["fourier_loss"] = float(np.mean(ep_four))
+            row["lambda_fourier"] = model.lambda_fourier
         history.append(row)
 
         if mae < best_mae:
@@ -146,12 +164,19 @@ def train_loop(model, train_ld, val_ld, *, epochs, lr, device,
             if is_pinn:
                 alpha = float(F.softplus(model.log_alpha).detach().cpu())
                 beta  = float(F.softplus(model.log_beta).detach().cpu())
+                lf_w  = model.lambda_fourier
                 extra = (f"  data {np.mean(ep_data):.5f}  "
                          f"four {np.mean(ep_four):.5f}  "
+                         f"lambda_f={lf_w:.4f}  "
                          f"alpha={alpha:.4f} beta={beta:.5f}")
             print(f"[{label:8s}] ep {ep+1:>3}/{epochs}  "
                   f"loss {np.mean(ep_loss):.5f}  "
                   f"val MAE {mae:7.2f}  RMSE {rmse:7.2f}{extra}")
+
+    # Restore full physics-loss weights before saving (warmup was training-only)
+    if is_pinn:
+        model.lambda_fourier     = base_lf
+        model.lambda_consistency = base_lc
 
     return best_state, history
 

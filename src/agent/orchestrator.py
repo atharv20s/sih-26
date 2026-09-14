@@ -81,16 +81,31 @@ class DigitalTwinOrchestrator:
             self.norm_min = np.zeros(12)
             self.norm_max = np.ones(12)
 
-        # Health smoothing memory
+        # Health and RUL smoothing memory (prevents high-frequency jitter)
         self._smoothed_health = {
-            "cylinder_head": 1.0,
+            "cylinder_head": 0.99,
             "crankshaft": 0.91,
-            "lubrication_system": 0.91,
-            "exhaust_manifold": 0.91,
+            "lubrication_system": 0.92,
+            "exhaust_manifold": 0.92,
         }
+        self._smoothed_rul = 485.0
+        self._smoothed_extension = 0.0
 
         # Build the LangGraph StateGraph
         self.graph = self._build_graph()
+
+    def reset_state(self):
+        """Reset internal buffers and filter memories to healthy nominal cruise state."""
+        self._buffer = []
+        self._correction_count = 0
+        self._smoothed_rul = 485.0
+        self._smoothed_extension = 0.0
+        self._smoothed_health = {
+            "cylinder_head": 0.99,
+            "crankshaft": 0.91,
+            "lubrication_system": 0.92,
+            "exhaust_manifold": 0.92,
+        }
 
     # --------------------------------------------------------------------- #
     # Tool 3: Sensor Auditor Node                                           #
@@ -162,123 +177,124 @@ class DigitalTwinOrchestrator:
     def pinn_engine_node(self, state: AgentState) -> Dict[str, Any]:
         """Evaluates thermodynamic boundary equations via PINN (Fourier's law).
 
-        Calculates Remaining Useful Life (RUL) and physical thermal gradient.
+        When a trained PINN model is loaded, `rul_raw`, `physics_residual`, and
+        `is_physically_valid` come directly from the model's `audit_sample()` output.
+        The EMA smoothing prevents per-frame jitter on the dashboard.
+
+        When no model is loaded, a scripted DEMO_FALLBACK (Arrhenius penalty on raw
+        thresholds) is used instead and labelled explicitly in the payload.  Never
+        call the fallback output 'physically validated by Fourier's law'.
         """
         buffer = state.get("window_buffer", [])
         audited = state.get("audited_telemetry", {})
+        cycle   = state.get("cycle", 0)
 
-        # Default fallback metrics
-        rul_pred = 300.0
-        phys_grad = 0.0
-        physics_residual = 0.2
+        # Defaults (used if model not available or buffer too short)
+        rul_from_model    = None
+        phys_grad         = 0.0
+        physics_residual  = 0.2
         is_physically_valid = True
+        model_active      = False
 
+        # ---- REAL MODEL PATH ------------------------------------------------
         if len(buffer) >= 5 and self.pinn_model is not None:
-            # Pad window to length 40 if needed
             window_len = 40
             frame_array = np.zeros((window_len, 12), dtype=np.float32)
             recent_frames = buffer[-window_len:]
             for t, f in enumerate(recent_frames):
                 idx = window_len - len(recent_frames) + t
                 frame_array[idx] = [f.get(s, 0.0) for s in SENSOR_NAMES]
-
-            # Replicate oldest frame for any initial padding
             if len(recent_frames) < window_len:
                 frame_array[:window_len - len(recent_frames)] = frame_array[window_len - len(recent_frames)]
 
-            # Normalize using stored min/max
-            norm_range = np.maximum(self.norm_max - self.norm_min, 1e-6)
-            norm_window = (frame_array - self.norm_min) / norm_range
-            norm_window = np.clip(norm_window, 0.0, 1.0)
+            norm_range  = np.maximum(self.norm_max - self.norm_min, 1e-6)
+            norm_window = np.clip((frame_array - self.norm_min) / norm_range, 0.0, 1.0)
 
             try:
                 x_tensor = torch.from_numpy(norm_window).float()
                 audit_dict = self.pinn_model.audit_sample(x_tensor)
-                rul_raw = float(audit_dict["rul_cycles"][0])
-                phys_grad = float(audit_dict["physical_gradient"][0])
-                physics_residual = float(audit_dict["physics_residual"][0])
-            except Exception:
-                pass
-        # Cycle-based dynamic mission progression (1 change per 5-6 seconds)
-        cycle = state.get("cycle", 0)
-        burn_interval = 55  # 55 frames at 10 Hz = 5.5 seconds
+                rul_from_model      = float(audit_dict["rul_cycles"][0])
+                phys_grad           = float(audit_dict["physical_gradient"][0])
+                physics_residual    = float(audit_dict["physics_residual"][0])
+                is_physically_valid = bool(audit_dict["is_physically_valid"][0])
+                model_active        = True
+            except Exception as _exc:
+                pass  # fall through to scripted path
+
+        # ---- DEMO_FALLBACK PATH (scripted — clearly labelled) ---------------
+        # Used when: model not loaded, buffer too short, or inference exception.
+        # The Arrhenius penalty on raw sensor thresholds is an engineering
+        # approximation, NOT Fourier's law.  Label it honestly.
+        cht   = audited.get("cht",           150.0)
+        vib   = audited.get("vibration_rms", 1.41)
+        oil_p = audited.get("oil_pressure",  281.8)
+        egt   = audited.get("egt",           667.7)
+
+        burn_interval = 55
         cycles_burned = (cycle // burn_interval) % 35
-        phase = (cycle / 55.0) * 2.0 * np.pi
-        phys_breathing = 0.35 * float(np.sin(phase))
+        rul_nominal   = 485.0 - cycles_burned   # simple countdown baseline
 
-        # Base TAPAS cruise RUL benchmark counting down by 1 cycle every 5.5 seconds
-        rul_nominal = 485.0 - cycles_burned + phys_breathing
-        rul_pred = max(250.0, min(520.0, rul_nominal))
+        thermal_penalty = max(0.04, float(np.exp(-max(0.0, (cht - 160.0) / 45.0) * 1.8)))   if cht > 160.0 else 1.0
+        lube_penalty    = max(0.05, float(np.exp(-max(0.0, (230.0 - oil_p) / 100.0) * 1.6))) if oil_p < 230.0 else 1.0
+        vib_penalty     = max(0.05, float(np.exp(-max(0.0, (vib - 2.0) / 1.5) * 1.7)))       if vib > 2.0   else 1.0
+        egt_penalty     = max(0.05, float(np.exp(-max(0.0, (egt - 710.0) / 120.0) * 1.5)))   if egt > 710.0 else 1.0
+        damage_factor   = min(thermal_penalty, lube_penalty, vib_penalty, egt_penalty)
+        fallback_rul    = max(14.0, rul_nominal * damage_factor)
 
-        # ---- PINN Thermodynamic Boundary & Arrhenius Damage Governor ----
-        cht = audited.get("cht", 150.0)
-        vib = audited.get("vibration_rms", 1.41)
-        oil_p = audited.get("oil_pressure", 281.8)
-        egt = audited.get("egt", 667.7)
-
-        # 1. Arrhenius exponential thermal damage (Rotax 914 F redline: 150°C continuous, 175°C max)
-        thermal_penalty = 1.0
-        if cht > 155.0:
-            t_excess = (cht - 155.0) / 22.0
-            thermal_penalty = max(0.028, float(np.exp(-t_excess * 0.95)))
-
-        # 2. Hydrodynamic oil starvation penalty (Nominal 250-350 kPa, critical bearing wipe < 200 kPa)
-        lube_penalty = 1.0
-        if oil_p < 220.0:
-            p_loss = max(0.0, 220.0 - oil_p) / 120.0
-            lube_penalty = max(0.045, float(1.0 - p_loss * 0.92))
-
-        # 3. High-cycle vibration fatigue penalty (Nominal 1.2-1.8g, structural resonance > 2.5g)
-        vib_penalty = 1.0
-        if vib > 2.2:
-            v_excess = max(0.0, vib - 2.2) / 1.5
-            vib_penalty = max(0.05, float(1.0 - v_excess * 0.88))
-
-        # 4. Turbocharger exhaust gas thermal degradation (Rotax 914 F redline: 880°C)
-        egt_penalty = 1.0
-        if egt > 740.0:
-            egt_excess = max(0.0, egt - 740.0) / 120.0
-            egt_penalty = max(0.05, float(1.0 - egt_excess * 0.85))
-
-        damage_factor = min(thermal_penalty, lube_penalty, vib_penalty, egt_penalty)
-
-        if damage_factor < 0.65:
-            # Under active emergency fault, burn accelerates to demonstrate rapid failure progression
-            fault_burn = float((cycle // 20) % 15)
-            final_rul = max(12.0, (rul_pred * damage_factor) - fault_burn)
-            is_physically_valid = False
-            physics_residual = max(0.42, 0.2 + (1.0 - damage_factor) * 1.8)
-            phys_grad = -0.334 - 0.02 * float(np.sin(phase))
-
-            sustain_hours_total = final_rul * 0.1
-            hours = int(sustain_hours_total)
-            mins = int(round((sustain_hours_total - hours) * 60))
-            sustain_str = f"⚠️ {hours}h {mins:02d}m"
-            mission_status = "CRITICAL_RTB"
+        # ---- EMA smoothing + final RUL selection ----------------------------
+        alpha_rul = 0.08
+        if model_active:
+            # Real model: EMA targets the model's own RUL prediction
+            self._smoothed_rul = (1.0 - alpha_rul) * self._smoothed_rul + alpha_rul * rul_from_model
+            fallback_active = False
         else:
-            final_rul = max(12.0, rul_pred * damage_factor)
-            is_physically_valid = True
-            physics_residual = 0.239 + 0.012 * float(np.sin(phase + 0.8))
-            phys_grad = 0.018 + 0.003 * float(np.cos(phase + 1.2))
+            # Scripted path: EMA targets the Arrhenius estimate
+            self._smoothed_rul = (1.0 - alpha_rul) * self._smoothed_rul + alpha_rul * fallback_rul
+            fallback_active = True
+            # Scripted fallback physics signals
+            phase = (cycle / 55.0) * 2.0 * np.pi
+            if damage_factor < 0.82:
+                physics_residual = min(2.8, 0.24 + (1.0 - damage_factor) * 1.2)
+                phys_grad        = -0.05 - (1.0 - damage_factor) * 0.35
+                is_physically_valid = False
+            else:
+                physics_residual = 0.235 + 0.008 * float(np.sin(phase + 0.8))
+                phys_grad        = 0.017 + 0.002 * float(np.cos(phase + 1.2))
+                is_physically_valid = True
 
-            # 1 change per 5.5s mission endurance countdown
-            total_mins = max(60, 48 * 60 + 30 - int(cycles_burned * 1.5))
-            hours = total_mins // 60
-            mins = total_mins % 60
-            sustain_hours_total = hours + (mins / 60.0)
-            sustain_str = f"{hours}h {mins:02d}m"
-            mission_status = "OPTIMAL" if final_rul >= 200.0 else "ELEVATED_WEAR"
+        final_rul = max(14.0, self._smoothed_rul)
+
+        sustain_hours_total = final_rul * 0.1
+        hours = int(sustain_hours_total)
+        mins  = int(round((sustain_hours_total - hours) * 60))
+
+        if final_rul <= 45.0:
+            sustain_str  = f"⚠️ {hours}h {mins:02d}m"
+            mission_status = "CRITICAL_RTB"
+        elif final_rul <= 200.0:
+            sustain_str  = f"{hours}h {mins:02d}m Protected Loiter"
+            mission_status = "ELEVATED_WEAR"
+        else:
+            sustain_str  = f"{hours}h {mins:02d}m Mission Endurance"
+            mission_status = "OPTIMAL"
+
+        # Fourier adherence label is honest about its source
+        if fallback_active if not model_active else not model_active:
+            fourier_label = "DEMO_FALLBACK" if not is_physically_valid else "DEMO_FALLBACK_NOMINAL"
+        else:
+            fourier_label = "COMPLIANT" if is_physically_valid else "BOUNDARY_DRIFT"
 
         pinn_results = {
-            "predicted_rul": round(final_rul, 1),
-            "physical_gradient": round(phys_grad, 4),
-            "physics_residual": round(physics_residual, 4),
+            "predicted_rul":      round(final_rul, 1),
+            "physical_gradient":  round(phys_grad, 4),
+            "physics_residual":   round(physics_residual, 4),
             "is_physically_valid": is_physically_valid,
-            "fourier_law_adherence": "COMPLIANT" if is_physically_valid else "BOUNDARY_DRIFT",
+            "fourier_law_adherence": fourier_label,
+            "model_active":        model_active,           # explicit flag for frontend
             "sustain_flight_hours": round(sustain_hours_total, 1),
-            "sustain_flight_str": sustain_str,
-            "mission_status": mission_status,
-            "damage_factor": round(damage_factor, 3),
+            "sustain_flight_str":  sustain_str,
+            "mission_status":      mission_status,
+            "damage_factor":       round(damage_factor, 3),
         }
 
         return {"pinn_results": pinn_results}
@@ -291,11 +307,19 @@ class DigitalTwinOrchestrator:
         buffer = state.get("window_buffer", [])
         audited = state.get("audited_telemetry", {})
 
-        fault_class = "cht_over"
-        confidence = 0.85
-        probs = {"vibration_over": 0.05, "cht_over": 0.85, "oil_starvation": 0.05, "egt_over": 0.05}
+        cht = audited.get("cht", 150.0)
+        vib = audited.get("vibration_rms", 1.2)
+        oil_p = audited.get("oil_pressure", 281.8)
+        egt = audited.get("egt", 667.7)
 
-        if len(buffer) >= 5 and self.fault_classifier is not None:
+        # Check if engine is in anomalous fault regime
+        is_anomalous = (cht > 175.0 or vib > 2.2 or oil_p < 235.0 or egt > 715.0)
+
+        if not is_anomalous:
+            fault_class = "nominal"
+            confidence = 0.98
+            probs = {"cht_over": 0.02, "vibration_over": 0.02, "oil_starvation": 0.02, "egt_over": 0.02}
+        elif len(buffer) >= 5 and self.fault_classifier is not None:
             window_len = 40
             frame_array = np.zeros((window_len, 12), dtype=np.float32)
             recent_frames = buffer[-window_len:]
@@ -315,32 +339,47 @@ class DigitalTwinOrchestrator:
                 confidence = res["confidence"]
                 probs = res["probabilities"]
             except Exception:
-                pass
+                # Rule-based fallback
+                if cht > 175.0:
+                    fault_class = "cht_over"
+                    confidence = min(0.98, max(0.65, cht / 210.0))
+                    probs = {"cht_over": confidence, "vibration_over": 0.15, "oil_starvation": 0.05, "egt_over": 0.05}
+                elif vib > 2.2:
+                    fault_class = "vibration_over"
+                    confidence = min(0.98, max(0.65, vib / 3.2))
+                    probs = {"cht_over": 0.05, "vibration_over": confidence, "oil_starvation": 0.05, "egt_over": 0.05}
+                elif oil_p < 235.0:
+                    fault_class = "oil_starvation"
+                    confidence = min(0.98, max(0.65, 1.0 - (oil_p - 130.0) / 105.0))
+                    probs = {"cht_over": 0.05, "vibration_over": 0.15, "oil_starvation": confidence, "egt_over": 0.05}
+                else:
+                    fault_class = "egt_over"
+                    confidence = min(0.98, max(0.65, egt / 800.0))
+                    probs = {"cht_over": 0.15, "vibration_over": 0.05, "oil_starvation": 0.05, "egt_over": confidence}
         else:
-            # Rule-based fallback classification
-            cht = audited.get("cht", 150.0)
-            vib = audited.get("vibration_rms", 1.2)
-            oil_p = audited.get("oil_pressure", 320.0)
-            egt = audited.get("egt", 650.0)
-
-            if vib > 2.8:
-                fault_class = "vibration_over"
-                confidence = min(0.98, vib / 3.5)
-            elif cht > 185.0:
+            # Rule-based fallback
+            if cht > 175.0:
                 fault_class = "cht_over"
-                confidence = min(0.98, cht / 210.0)
-            elif oil_p < 200.0:
+                confidence = min(0.98, max(0.65, cht / 210.0))
+                probs = {"cht_over": confidence, "vibration_over": 0.15, "oil_starvation": 0.05, "egt_over": 0.05}
+            elif vib > 2.2:
+                fault_class = "vibration_over"
+                confidence = min(0.98, max(0.65, vib / 3.2))
+                probs = {"cht_over": 0.05, "vibration_over": confidence, "oil_starvation": 0.05, "egt_over": 0.05}
+            elif oil_p < 235.0:
                 fault_class = "oil_starvation"
-                confidence = 0.92
-            elif egt > 750.0:
+                confidence = min(0.98, max(0.65, 1.0 - (oil_p - 130.0) / 105.0))
+                probs = {"cht_over": 0.05, "vibration_over": 0.15, "oil_starvation": confidence, "egt_over": 0.05}
+            else:
                 fault_class = "egt_over"
-                confidence = 0.88
+                confidence = min(0.98, max(0.65, egt / 800.0))
+                probs = {"cht_over": 0.15, "vibration_over": 0.05, "oil_starvation": 0.05, "egt_over": confidence}
 
         fault_results = {
             "predicted_fault": fault_class,
             "confidence": round(confidence, 3),
             "probabilities": probs,
-            "severity": "CRITICAL" if confidence > 0.8 else "MODERATE",
+            "severity": "CRITICAL" if confidence > 0.8 and is_anomalous else ("NOMINAL" if not is_anomalous else "MODERATE"),
         }
         return {"fault_results": fault_results}
 
@@ -358,7 +397,8 @@ class DigitalTwinOrchestrator:
         vib = audited.get("vibration_rms", 1.2)
         oil_p = audited.get("oil_pressure", 320.0)
 
-        # 15-dim state vector matching DRL agent
+        # 18-dim state vector matching DRL agent (14 sensor/PINN + 4-dim archetype one-hot).
+        # Archetype is unknown at inference time — default to zeros (neutral prior).
         st_vec = np.array([
             (audited.get("rpm", 4800.0) - 4500.0) / 1000.0,
             (cht - 150.0) / 50.0,
@@ -366,21 +406,29 @@ class DigitalTwinOrchestrator:
             (audited.get("oil_temp", 85.0) - 85.0) / 30.0,
             (oil_p - 300.0) / 100.0,
             (audited.get("fuel_flow", 9.5) - 9.5) / 5.0,
-            (vib - 1.2) / 1.5,
+            (vib - 2.5) / 5.0,
             (audited.get("map", 92.0) - 90.0) / 20.0,
             (audited.get("afr", 13.8) - 13.5) / 2.0,
-            (audited.get("coolant_temp", 78.0) - 78.0) / 20.0,
-            0.72,
+            (audited.get("coolant_temp", 82.0) - 82.0) / 20.0,
+            0.72,          # throttle nominal
             grad,
             rul / 400.0,
             max(0.0, min(1.0, rul / 400.0)),
-            1.0 if cht > 180.0 else 0.0,
+            # 4-dim archetype one-hot: unknown at live inference — default to uniform [0.25, 0.25, 0.25, 0.25]
+            # scaled so the network sees a 'uncertain archetype' rather than a spurious hard prior.
+            0.25, 0.25, 0.25, 0.25,
         ], dtype=np.float32)
 
         if self.drl_policy is not None:
             try:
                 from drl.drl_agent import recommend_prognostic_action
                 drl_results = recommend_prognostic_action(self.drl_policy, st_vec, cht, vib, rul)
+                # Smooth the policy's extension to prevent jitter
+                target_ext = float(drl_results.get("projected_extension_cycles", 0.0))
+                self._smoothed_extension = 0.88 * self._smoothed_extension + 0.12 * target_ext
+                ext_disp = round(self._smoothed_extension, 1)
+                drl_results["projected_extension_cycles"] = ext_disp
+                drl_results["adjusted_rul"] = round(rul + ext_disp, 1)
             except Exception:
                 drl_results = self._heuristic_drl(cht, vib, oil_p, rul)
         else:
@@ -393,23 +441,31 @@ class DigitalTwinOrchestrator:
         warning = None
         d_thr = 0.0
         d_mix = 0.0
-        extension = 0.0
+        target_extension = 0.0
 
-        if cht > 195.0:
+        if cht > 190.0:
             shield = True
-            d_thr = -0.08
-            d_mix = -0.06
-            extension = 35.0
-            warning = "PINN Boundary Shield: Activated thermal de-rate (-8% throttle, +rich AFR)"
-        elif vib > 3.0:
+            severity = min(1.0, (cht - 190.0) / 25.0)
+            d_thr = -0.04 - severity * 0.06
+            d_mix = -0.03 - severity * 0.04
+            target_extension = 15.0 + severity * 20.0
+            warning = f"PINN Boundary Shield: Activated thermal de-rate ({d_thr*100:.0f}% throttle, rich AFR)"
+        elif vib > 2.6:
             shield = True
-            d_thr = -0.10
-            extension = 28.0
-            warning = "PINN Boundary Shield: Activated vibration alleviation de-rate (-10% throttle)"
-        elif oil_p < 200.0:
-            d_thr = -0.05
-            extension = 18.0
-            warning = "Prognostic Recommendation: De-rate throttle to reduce bearing oil shear"
+            severity = min(1.0, (vib - 2.6) / 1.0)
+            d_thr = -0.05 - severity * 0.05
+            target_extension = 12.0 + severity * 18.0
+            warning = f"PINN Boundary Shield: Activated vibration alleviation ({d_thr*100:.0f}% throttle)"
+        elif oil_p < 210.0:
+            severity = min(1.0, (210.0 - oil_p) / 60.0)
+            d_thr = -0.03 - severity * 0.04
+            target_extension = 10.0 + severity * 12.0
+            warning = f"Prognostic Recommendation: De-rate throttle ({d_thr*100:.0f}%) to preserve oil film"
+
+        # Smooth extension over frames to avoid jumping
+        alpha_ext = 0.10
+        self._smoothed_extension = (1.0 - alpha_ext) * self._smoothed_extension + alpha_ext * target_extension
+        ext_disp = round(self._smoothed_extension, 1)
 
         return {
             "delta_throttle": round(d_thr, 3),
@@ -417,8 +473,8 @@ class DigitalTwinOrchestrator:
             "shield_applied": shield,
             "warning_flag": warning,
             "recommendation": warning or "Maintain steady cruise envelope",
-            "projected_extension_cycles": extension,
-            "adjusted_rul": round(rul + extension, 1),
+            "projected_extension_cycles": ext_disp,
+            "adjusted_rul": round(rul + ext_disp, 1),
         }
 
     # --------------------------------------------------------------------- #
@@ -432,43 +488,59 @@ class DigitalTwinOrchestrator:
         drl = state.get("drl_results", {})
         audit = state.get("audit_results", {})
 
-        # Compute component health indices (0 to 1) for 3D color-coding
+        # Compute individual physical health indices (bounded 0.20 to 1.0)
         cht = audited.get("cht", 150.0)
         vib = audited.get("vibration_rms", 1.2)
-        oil_p = audited.get("oil_pressure", 320.0)
-        egt = audited.get("egt", 650.0)
+        oil_p = audited.get("oil_pressure", 281.8)
+        egt = audited.get("egt", 667.7)
 
-        # Adaptive EMA smoothing: calm stability under nominal cruise, responsive under active faults
-        raw_cyl = max(0.0, min(1.0, 1.0 - max(0.0, cht - 150.0) / 60.0))
-        raw_crank = max(0.0, min(1.0, 1.0 - max(0.0, vib - 1.2) / 2.3))
-        raw_lube = max(0.0, min(1.0, (oil_p - 150.0) / 180.0))
-        raw_exhaust = max(0.0, min(1.0, 1.0 - max(0.0, egt - 650.0) / 200.0))
-
-        is_fault = (cht > 190.0 or vib > 2.8 or oil_p < 200.0 or egt > 760.0)
-        alpha = 0.18 if is_fault else 0.05
-        self._smoothed_health["cylinder_head"] = (1.0 - alpha) * self._smoothed_health["cylinder_head"] + alpha * raw_cyl
-        self._smoothed_health["crankshaft"] = (1.0 - alpha) * self._smoothed_health["crankshaft"] + alpha * raw_crank
-        self._smoothed_health["lubrication_system"] = (1.0 - alpha) * self._smoothed_health["lubrication_system"] + alpha * raw_lube
-        self._smoothed_health["exhaust_manifold"] = (1.0 - alpha) * self._smoothed_health["exhaust_manifold"] + alpha * raw_exhaust
-        cycle = state.get("cycle", 0)
-        phase = (cycle / 55.0) * 2.0 * np.pi
-
-        # Dynamic 5-6 second thermodynamic micro-shifts (±1-2%) for visible life at 1 change per 5-6 sec
-        if not is_fault:
-            dyn_cyl = 0.012 * float(np.sin(phase))
-            dyn_crank = 0.014 * float(np.sin(phase + 1.3))
-            dyn_lube = 0.014 * float(np.cos(phase + 2.5))
-            dyn_exhaust = 0.012 * float(np.sin(phase + 3.8))
-
-            disp_cyl = max(0.85, min(1.0, 0.995 + dyn_cyl))
-            disp_crank = max(0.80, min(0.98, 0.912 + dyn_crank))
-            disp_lube = max(0.80, min(0.98, 0.910 + dyn_lube))
-            disp_exhaust = max(0.80, min(0.98, 0.912 + dyn_exhaust))
+        # 1. Cylinder Head Health (primarily driven by CHT)
+        if cht <= 155.0:
+            target_cyl = 0.99 - max(0.0, cht - 140.0) / 15.0 * 0.04
+        elif cht <= 185.0:
+            target_cyl = 0.95 - (cht - 155.0) / 30.0 * 0.24  # 95% down to 71%
         else:
-            disp_cyl = self._smoothed_health["cylinder_head"]
-            disp_crank = self._smoothed_health["crankshaft"]
-            disp_lube = self._smoothed_health["lubrication_system"]
-            disp_exhaust = self._smoothed_health["exhaust_manifold"]
+            target_cyl = max(0.24, 0.71 - (cht - 185.0) / 30.0 * 0.45)  # down to ~26%
+
+        # 2. Crankshaft / Bearing Health (primarily driven by vibration + oil starve)
+        if vib <= 1.6:
+            target_crank = 0.93 - max(0.0, vib - 1.0) / 0.6 * 0.03
+        elif vib <= 2.5:
+            target_crank = 0.90 - (vib - 1.6) / 0.9 * 0.25  # 90% down to 65%
+        else:
+            target_crank = max(0.20, 0.65 - (vib - 2.5) / 1.0 * 0.45)  # down to ~20%
+        # Secondary impact on crank if oil starvation is severe
+        if oil_p < 200.0:
+            oil_factor = max(0.40, 0.40 + (oil_p - 130.0) / 70.0 * 0.35)
+            target_crank = min(target_crank, oil_factor)
+
+        # 3. Lubrication Loop Health (primarily driven by oil pressure)
+        if oil_p >= 260.0:
+            target_lube = 0.93 + min(0.05, (oil_p - 260.0) / 80.0 * 0.05)
+        elif oil_p >= 200.0:
+            target_lube = 0.70 + (oil_p - 200.0) / 60.0 * 0.23  # 70% to 93%
+        else:
+            target_lube = max(0.22, 0.22 + max(0.0, oil_p - 130.0) / 70.0 * 0.46)  # down to ~22%
+
+        # 4. Exhaust Manifold Health (primarily driven by EGT)
+        if egt <= 675.0:
+            target_exhaust = 0.94 - max(0.0, egt - 600.0) / 75.0 * 0.04
+        elif egt <= 740.0:
+            target_exhaust = 0.90 - (egt - 675.0) / 65.0 * 0.24  # 66% to 90%
+        else:
+            target_exhaust = max(0.24, 0.66 - (egt - 740.0) / 100.0 * 0.42)  # down to ~24%
+
+        # Smooth component health using EMA to prevent sudden jumping
+        alpha_health = 0.10
+        self._smoothed_health["cylinder_head"] = (1.0 - alpha_health) * self._smoothed_health["cylinder_head"] + alpha_health * target_cyl
+        self._smoothed_health["crankshaft"] = (1.0 - alpha_health) * self._smoothed_health["crankshaft"] + alpha_health * target_crank
+        self._smoothed_health["lubrication_system"] = (1.0 - alpha_health) * self._smoothed_health["lubrication_system"] + alpha_health * target_lube
+        self._smoothed_health["exhaust_manifold"] = (1.0 - alpha_health) * self._smoothed_health["exhaust_manifold"] + alpha_health * target_exhaust
+
+        disp_cyl = self._smoothed_health["cylinder_head"]
+        disp_crank = self._smoothed_health["crankshaft"]
+        disp_lube = self._smoothed_health["lubrication_system"]
+        disp_exhaust = self._smoothed_health["exhaust_manifold"]
 
         dispatch_payload = {
             "cycle": state.get("cycle", 0),

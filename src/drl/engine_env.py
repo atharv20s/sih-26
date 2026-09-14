@@ -1,10 +1,13 @@
 """Aero Piston Engine Prognostic & Control Environment (SIH26054).
 
 Simulates degrading MALE UAV piston engine dynamics with continuous control:
-  - State Space (S): Sensor telemetry + PINN physical gradient + PINN RUL + Health index.
+  - State Space (S): 18-dim — sensor telemetry + PINN physical gradient + PINN RUL
+                    + Health index + 4-dim archetype one-hot.
   - Action Space (A): Continuous [delta_throttle, delta_mixture] adjustments.
   - PINN Safety Shield: Hard thermodynamic boundary filter preventing catastrophic actions.
   - Reward Function: Rewards flight duration extension while penalizing material thermal & vibration stress.
+
+Thresholds are aligned with engine_sim.py FAILURE_LIMITS (single source of truth).
 """
 
 from __future__ import annotations
@@ -12,13 +15,26 @@ from __future__ import annotations
 import numpy as np
 from dataclasses import dataclass
 
-# Safe physical thresholds for MALE UAV aero piston engine
-CHT_WARN = 185.0       # °C (approaching threshold)
-CHT_CRIT = 210.0       # °C (structural damage limit)
-EGT_CRIT = 800.0       # °C (combustion runaway limit)
-VIB_WARN = 2.5         # g (bearing wear acceleration)
-VIB_CRIT = 3.5         # g (mechanical failure threshold)
-OIL_MIN  = 180.0       # kPa (minimum hydrodynamic wedge pressure)
+# ---- Failure thresholds — MUST match engine_sim.py FAILURE_LIMITS exactly ----
+# Source of truth: src/sim/engine_sim.py  FAILURE_LIMITS dict
+CHT_WARN = 210.0       # °C (approaching limit — warn zone)
+CHT_CRIT = 260.0       # °C (structural damage limit, Rotax 914 redline)
+EGT_CRIT = 840.0       # °C (combustion runaway / valve melt limit)
+VIB_WARN = 8.0         # g  (bearing wear acceleration)
+VIB_CRIT = 15.0        # g  (mechanical failure threshold)
+OIL_MIN  = 40.0        # kPa (lube starvation combined with oil_temp > 160°C)
+
+# ---- Archetype encoding (must match FAULT_CLASSES in fault_classifier.py) ----
+ARCHETYPE_ORDER = ["vibration_over", "cht_over", "egt_over", "oil_starvation"]
+ARCHETYPE_IDX   = {name: i for i, name in enumerate(ARCHETYPE_ORDER)}
+
+
+def archetype_onehot(archetype: str) -> np.ndarray:
+    """Return a 4-dim one-hot float32 vector for the given archetype name."""
+    vec = np.zeros(4, dtype=np.float32)
+    idx = ARCHETYPE_IDX.get(archetype, 0)
+    vec[idx] = 1.0
+    return vec
 
 
 @dataclass
@@ -94,24 +110,30 @@ class AeroEngineEnv:
         return self._get_observation()
 
     def _get_observation(self) -> np.ndarray:
-        """Vector observation (15-dim state space)."""
-        return np.array([
+        """Vector observation — 18-dim state space.
+
+        Dims 0-13 : normalised sensor telemetry + PINN outputs + health
+        Dims 14-17: 4-dim one-hot archetype vector
+                    [vibration_over, cht_over, egt_over, oil_starvation]
+        """
+        sensor_part = np.array([
             (self.rpm - 4500.0) / 1000.0,
             (self.cht - 150.0) / 50.0,
             (self.egt - 650.0) / 100.0,
             (self.oil_temp - 85.0) / 30.0,
             (self.oil_pressure - 300.0) / 100.0,
             (self.fuel_flow - 9.5) / 5.0,
-            (self.vibration_rms - 1.2) / 1.5,
+            (self.vibration_rms - 2.5) / 5.0,
             (self.map_kpa - 90.0) / 20.0,
             (self.afr - 13.5) / 2.0,
-            (self.coolant_temp - 78.0) / 20.0,
+            (self.coolant_temp - 82.0) / 20.0,
             self.throttle,
             self.pinn_gradient,
             self.pinn_rul / 400.0,
             self.health,
-            1.0 if self.failure_archetype == "cht_over" else 0.0,
         ], dtype=np.float32)
+        onehot = archetype_onehot(self.failure_archetype)
+        return np.concatenate([sensor_part, onehot])
 
     def apply_pinn_safety_shield(self, action: np.ndarray) -> tuple[np.ndarray, bool]:
         """PINN Safety Shield: Prevents hazardous exploratory RL actions.
@@ -192,36 +214,42 @@ class AeroEngineEnv:
         q_dissipation = 0.65 * (self.cht - self.coolant_temp)
 
         if self.failure_archetype == "cht_over":
-            # Cooling degradation causes thermal runaway
-            cht_bias = deg_fraction ** 2 * 90.0
+            # Cooling path degradation — CHT must be able to reach CHT_CRIT (260°C).
+            # At deg_fraction=1.0: cht_bias=140°C, dcht adds ~7°C/cycle from bias alone.
+            cht_bias = deg_fraction ** 2 * 140.0
         else:
-            cht_bias = deg_fraction * 20.0
+            cht_bias = deg_fraction * 25.0
 
         dcht = 0.15 * (q_combustion - q_dissipation) + (self.throttle - 0.72) * 15.0 + cht_bias * 0.05
-        self.cht = float(np.clip(self.cht + dcht, 90.0, 240.0))
+        # Clip above CHT_CRIT so the termination condition can fire
+        self.cht = float(np.clip(self.cht + dcht, 90.0, 270.0))
         self.pinn_gradient = dcht
 
-        # EGT response
+        # EGT response — must be able to reach EGT_CRIT (840°C)
         if self.failure_archetype == "egt_over":
-            egt_bias = deg_fraction ** 2 * 180.0
+            egt_bias = deg_fraction ** 2 * 260.0
         else:
-            egt_bias = deg_fraction * 30.0
-        self.egt = float(np.clip(580.0 + self.throttle * 120.0 + (self.afr - 13.0) * 25.0 + egt_bias, 500.0, 900.0))
+            egt_bias = deg_fraction * 40.0
+        self.egt = float(np.clip(580.0 + self.throttle * 120.0 + (self.afr - 13.0) * 25.0 + egt_bias,
+                                 500.0, 900.0))   # 900 > EGT_CRIT (840), so failure can fire
 
-        # Vibration response
+        # Vibration response — must be able to reach VIB_CRIT (15g)
         if self.failure_archetype == "vibration_over":
-            vib_bias = deg_fraction ** 2.2 * 3.2
+            # At deg_fraction=1.0: vib_bias = 14.0g; combined with base ~1.2g → ≈15.2g → failure
+            vib_bias = deg_fraction ** 2.2 * 14.0
         else:
-            vib_bias = deg_fraction * 0.5
-        self.vibration_rms = float(np.clip(1.0 + (self.throttle - 0.5) * 0.8 + vib_bias, 0.8, 4.5))
+            vib_bias = deg_fraction * 1.0
+        self.vibration_rms = float(np.clip(1.0 + (self.throttle - 0.5) * 0.8 + vib_bias,
+                                           0.8, 16.0))   # 16 > VIB_CRIT (15), failure can fire
 
-        # Oil pressure response
+        # Oil pressure — must be able to reach OIL_MIN (40 kPa)
         if self.failure_archetype == "oil_starvation":
-            self.oil_pressure = float(max(100.0, 320.0 - deg_fraction * 220.0))
-            self.oil_temp = float(85.0 + deg_fraction * 50.0)
+            # Drops from 320 → 20 kPa at full degradation (crosses OIL_MIN=40 at ~deg=0.87)
+            self.oil_pressure = float(max(20.0, 320.0 - deg_fraction * 300.0))
+            self.oil_temp = float(85.0 + deg_fraction * 80.0)   # can reach 165°C
         else:
             self.oil_pressure = float(320.0 - deg_fraction * 30.0)
-            self.oil_temp = float(85.0 + deg_fraction * 15.0)
+            self.oil_temp     = float(85.0  + deg_fraction * 15.0)
 
         # Update remaining useful life estimate
         self.pinn_rul = max(0.0, self.health * self.max_cycles)

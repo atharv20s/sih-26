@@ -17,5 +17,7 @@ _extracted/
 
 # Local configuration and logs
 .claude/
+Claude outputs/
 *.log
+*.zip
 .system_generated/
