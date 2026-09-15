@@ -30,6 +30,11 @@ class AeroEngine3D {
     this.fluidParticles = [];
     this.calloutSprites = [];
 
+    // Raycasted hotspot interaction state
+    this.raycaster = new THREE.Raycaster();
+    this.mouse = new THREE.Vector2();
+    this.proxyMeshes = [];
+
     this.targetCameraPos = new THREE.Vector3(0, 3.4, 7.2);
     this.targetLookAt = new THREE.Vector3(0.1, 0.1, 0);
 
@@ -42,13 +47,17 @@ class AeroEngine3D {
     this.clipEnabled = { x: false, y: false, z: false };
 
     this.initScene();
+    this.buildEnvironmentMap();
+    this.initPostProcessing();
     this.initThermalShaders();
     this.buildTapasAirframe();
     this.buildEngineAssembly();
     this.buildBatteryPack();
     this.buildFuelOilLoop();
     this.setupLighting();
+    this.applyShadowCasters();
     this.setupSensorNodes();
+    this.setupHotspots();
     this.setupPinnedCallouts();
     this.animate();
 
@@ -206,30 +215,6 @@ class AeroEngine3D {
         clipping: true
       });
     };
-  }
-
-  setupLighting() {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-    this.scene.add(ambientLight);
-
-    const mainLight = new THREE.DirectionalLight(0x38bdf8, 2.2);
-    mainLight.position.set(6, 10, 5);
-    mainLight.castShadow = true;
-    this.scene.add(mainLight);
-
-    const rimLight = new THREE.DirectionalLight(0x06b6d4, 1.4);
-    rimLight.position.set(-6, 5, -5);
-    this.scene.add(rimLight);
-
-    // Warm underside glow for engine and fluid loops
-    this.thermalPointLight = new THREE.PointLight(0xf59e0b, 2.0, 8);
-    this.thermalPointLight.position.set(-0.8, 0.4, 0.8);
-    this.scene.add(this.thermalPointLight);
-
-    // Grid Floor
-    const gridHelper = new THREE.GridHelper(14, 28, 0x0284c7, 0x1e293b);
-    gridHelper.position.y = -1.6;
-    this.scene.add(gridHelper);
   }
 
   // -------------------------------------------------------------------------
@@ -752,20 +737,107 @@ class AeroEngine3D {
   }
 
   setupLighting() {
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
     this.scene.add(this.ambientLight);
 
-    this.dirLight1 = new THREE.DirectionalLight(0x38bdf8, 1.3);
+    // Key light — casts shadows, defines primary form
+    this.dirLight1 = new THREE.DirectionalLight(0x9fc9ff, 1.6);
     this.dirLight1.position.set(5, 8, 5);
+    this.dirLight1.castShadow = true;
+    this.dirLight1.shadow.mapSize.set(2048, 2048);
+    this.dirLight1.shadow.camera.near = 0.5;
+    this.dirLight1.shadow.camera.far = 30;
+    this.dirLight1.shadow.camera.left = -8;
+    this.dirLight1.shadow.camera.right = 8;
+    this.dirLight1.shadow.camera.top = 8;
+    this.dirLight1.shadow.camera.bottom = -8;
+    this.dirLight1.shadow.bias = -0.0015;
     this.scene.add(this.dirLight1);
 
-    this.dirLight2 = new THREE.DirectionalLight(0xf59e0b, 0.7);
+    // Warm fill/back light — separates silhouette, no shadows (perf)
+    this.dirLight2 = new THREE.DirectionalLight(0xf59e0b, 0.55);
     this.dirLight2.position.set(-5, -3, -5);
     this.scene.add(this.dirLight2);
+
+    // Cool rim light from below-behind for edge definition
+    this.rimLight = new THREE.DirectionalLight(0x38bdf8, 0.5);
+    this.rimLight.position.set(-4, 2, -6);
+    this.scene.add(this.rimLight);
 
     this.gridHelper = new THREE.GridHelper(20, 20, 0x1e293b, 0x0f172a);
     this.gridHelper.position.y = -1.2;
     this.scene.add(this.gridHelper);
+
+    // Shadow-catcher ground plane (invisible, receives soft contact shadow only)
+    const groundGeo = new THREE.PlaneGeometry(24, 24);
+    const groundMat = new THREE.ShadowMaterial({ opacity: 0.28 });
+    this.shadowGround = new THREE.Mesh(groundGeo, groundMat);
+    this.shadowGround.rotation.x = -Math.PI / 2;
+    this.shadowGround.position.y = -1.19;
+    this.shadowGround.receiveShadow = true;
+    this.scene.add(this.shadowGround);
+  }
+
+  // -------------------------------------------------------------------------
+  // Procedural environment map (PMREM) — gives metallic parts realistic
+  // reflections without loading an external HDRI file.
+  // -------------------------------------------------------------------------
+  buildEnvironmentMap() {
+    const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+    pmremGenerator.compileEquirectangularShader();
+
+    const envScene = new THREE.Scene();
+    const roomGeo = new THREE.BoxGeometry();
+    roomGeo.deleteAttribute('uv');
+    const roomMat = new THREE.MeshStandardMaterial({ color: 0x0a0e14, side: THREE.BackSide, roughness: 1.0 });
+    const room = new THREE.Mesh(roomGeo, roomMat);
+    room.scale.setScalar(10);
+    envScene.add(room);
+
+    const coolLight = new THREE.PointLight(0x8ecfff, 22, 20);
+    coolLight.position.set(3, 5, -3);
+    envScene.add(coolLight);
+
+    const warmLight = new THREE.PointLight(0xffae66, 14, 15);
+    warmLight.position.set(-4, -2, 4);
+    envScene.add(warmLight);
+
+    const topLight = new THREE.PointLight(0xbfe4ff, 10, 15);
+    topLight.position.set(0, 6, 0);
+    envScene.add(topLight);
+
+    this.scene.environment = pmremGenerator.fromScene(envScene, 0.045).texture;
+    pmremGenerator.dispose();
+  }
+
+  // -------------------------------------------------------------------------
+  // Post-processing — subtle bloom reserved for thermal redlines / critical
+  // alarm glow, consistent with "color reserved for anomalies" HUD design.
+  // -------------------------------------------------------------------------
+  initPostProcessing() {
+    if (!THREE.EffectComposer || !THREE.RenderPass || !THREE.UnrealBloomPass) {
+      this.composer = null;
+      return;
+    }
+    const width = this.canvas.clientWidth || 900;
+    const height = this.canvas.clientHeight || 550;
+
+    this.composer = new THREE.EffectComposer(this.renderer);
+    this.composer.addPass(new THREE.RenderPass(this.scene, this.camera));
+
+    this.bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(width, height), 0.55, 0.35, 0.86);
+    this.composer.addPass(this.bloomPass);
+  }
+
+  // Enable shadow casting/receiving on all solid meshes built above (called
+  // once after every buildX() has populated the scene).
+  applyShadowCasters() {
+    this.scene.traverse((obj) => {
+      if (obj.isMesh && obj !== this.shadowGround) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
   }
 
   setTheme(theme) {
@@ -903,89 +975,49 @@ class AeroEngine3D {
     this.updateSensorNodeStates(tel);
   }
 
+  // -------------------------------------------------------------------------
+  // Docked leader-line callouts — replaces the old always-facing-camera
+  // billboard sprites with a proper CAD/Open MCT style annotation: a fixed
+  // 3D anchor point, a thin leader line, and a label box docked to the
+  // nearest viewport edge so text stays upright and readable at all times.
+  // -------------------------------------------------------------------------
   setupPinnedCallouts() {
     this.callouts = {};
-    this.showCallouts = false; // Hidden by default in operational ground-station mode
+    this.showCallouts = true;
 
-    const createDynamicCallout = (id, title, lines, color = '#38bdf8') => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 440;
-      canvas.height = 140;
-      const ctx = canvas.getContext('2d');
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.minFilter = THREE.LinearFilter;
-      const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
-      const sprite = new THREE.Sprite(spriteMat);
-      sprite.scale.set(1.5, 0.48, 1);
-      this.scene.add(sprite);
+    this.leaderCanvas = document.getElementById('leader-line-canvas');
+    this.leaderCtx = this.leaderCanvas ? this.leaderCanvas.getContext('2d') : null;
+    if (this.leaderCanvas) {
+      this.leaderCanvas.width = this.canvas.clientWidth || 900;
+      this.leaderCanvas.height = this.canvas.clientHeight || 550;
+    }
 
-      this.callouts[id] = { canvas, ctx, texture, sprite, title, color, lines };
-      this.drawCallout(id);
-      return sprite;
+    const define = (id, title, lines, color, anchor, dockSide) => {
+      this.callouts[id] = { title, color, lines, anchor: anchor.clone(), dockSide };
     };
 
-    // 1. UAV Callout
-    this.calloutUAV = createDynamicCallout('uav', 'AIRFRAME VIBRATION', [
-      'VIBRATION: 1.41 G (RMS)',
-      'FREQ: 720 Hz | AMB: +15.0°C | ALT: 12,500 ft'
-    ], '#38bdf8');
-    this.calloutUAV.position.set(0.1, 2.05, -0.6);
+    define('uav', 'AIRFRAME VIBRATION', [
+      'VIB: 1.41 g RMS',
+      'ALT: 12,500 ft',
+      'SUSTAIN: NOMINAL'
+    ], '#38bdf8', new THREE.Vector3(0.1, 2.05, -0.6), 'right');
 
-    // 2. Engine Callout
-    this.calloutEngine = createDynamicCallout('engine', 'ROTAX 914 F TURBO', [
-      'RPM: 4535 | CHT: 148.6°C | EGT: 667.7°C',
-      'COOLING: 1.00x | CRUISE ENVELOPE'
-    ], '#f59e0b');
-    this.calloutEngine.position.set(-0.85, 0.55, 0.95);
+    define('engine', 'ROTAX 914 F TURBO', [
+      'RPM 4535  CHT 148.6°',
+      'EGT 667.7°  x1.00',
+      'NOMINAL'
+    ], '#f59e0b', new THREE.Vector3(-0.85, 0.55, 0.95), 'right');
 
-    // 3. Battery Callout
-    this.calloutBattery = createDynamicCallout('battery', 'ALT / BATTERY PACK', [
-      'BUS: 28.4 V | LOAD: 13.5 A',
-      'CHARGE: 100% | CELL BAL: OPTIMAL'
-    ], '#10b981');
-    this.calloutBattery.position.set(2.05, 0.42, 0.35);
+    define('battery', 'ALT / BATTERY PACK', [
+      'BUS 28.4V  13.5A',
+      'CHARGE 100%'
+    ], '#10b981', new THREE.Vector3(2.05, 0.42, 0.35), 'right');
 
-    // 4. Fluid Loop Callout
-    this.calloutLoop = createDynamicCallout('loop', 'FUEL & OIL SYSTEM LOOP', [
-      'FLOW: 8.30 L/h | OIL P: 281.8 kPa',
-      'OIL TEMP: 96.4°C | NOMINAL CIRCULATION'
-    ], '#06b6d4');
-    this.calloutLoop.position.set(0.75, 0.28, 0.8);
-  }
-
-  drawCallout(id) {
-    const entry = this.callouts[id];
-    if (!entry) return;
-    const { canvas, ctx, texture, title, color, lines } = entry;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Card background
-    ctx.fillStyle = 'rgba(8, 14, 28, 0.94)';
-    ctx.beginPath();
-    ctx.roundRect(6, 6, 428, 128, 10);
-    ctx.fill();
-
-    // Border & header line
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5;
-    ctx.beginPath();
-    ctx.roundRect(6, 6, 428, 128, 10);
-    ctx.stroke();
-
-    // Header title
-    ctx.fillStyle = color;
-    ctx.font = 'bold 20px Inter, sans-serif';
-    ctx.fillText(title, 20, 38);
-
-    // Value lines
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '16px "JetBrains Mono", monospace';
-    lines.forEach((line, idx) => {
-      ctx.fillText(line, 20, 72 + idx * 28);
-    });
-
-    texture.needsUpdate = true;
+    define('loop', 'FUEL & OIL SYSTEM LOOP', [
+      'FLOW 8.3L/h',
+      'OIL P 282  T 96°',
+      'CIRCULATION OK'
+    ], '#06b6d4', new THREE.Vector3(0.75, 0.28, 0.8), 'right');
   }
 
   updateCalloutData(id, lines, newColor = null) {
@@ -993,7 +1025,99 @@ class AeroEngine3D {
     if (!entry) return;
     entry.lines = lines;
     if (newColor) entry.color = newColor;
-    this.drawCallout(id);
+  }
+
+  // Projects each callout's 3D anchor to screen space, docks its label box
+  // to the nearest viewport edge (stacked vertically per side), and draws a
+  // leader line connecting the two. Runs once per animation frame.
+  drawLeaderLines() {
+    if (!this.showCallouts || !this.leaderCtx || !this.leaderCanvas) return;
+    const ctx = this.leaderCtx;
+    const w = this.leaderCanvas.width;
+    const h = this.leaderCanvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    // All callouts dock into a single 2x2 grid block tucked into the
+    // viewport's right side — this keeps the ENTIRE left/center clear for
+    // the model (that's the point: no boxes drift over the airframe/engine)
+    // and needs only 2 stacked rows instead of 4, so it still fits short
+    // canvases. Still clears the top-right View Manager (topClear) and the
+    // bottom-right clipping-controls/heatmap-legend overlays (bottomClear).
+    const topClear = 118;
+    const bottomClear = 168;
+    const margin = 14;
+    const gap = 8;
+    const availH = Math.max(90, h - topClear - bottomClear);
+    const boxH = Math.max(52, Math.min(64, (availH - gap) / 2));
+    const boxW = Math.max(140, Math.min(210, w * 0.30));
+    const colXOuter = w - boxW - margin;         // rightmost column (hugs the edge)
+    const colXInner = colXOuter - boxW - gap;    // column just inside it
+    const rowYTop = topClear;
+    const rowYBottom = topClear + boxH + gap;
+    const gridSlots = [
+      { x: colXInner, y: rowYTop },
+      { x: colXOuter, y: rowYTop },
+      { x: colXInner, y: rowYBottom },
+      { x: colXOuter, y: rowYBottom },
+    ];
+
+    Object.values(this.callouts).forEach((entry, i) => {
+      const projected = entry.anchor.clone().project(this.camera);
+      if (projected.z > 1) return; // behind camera
+      const anchorX = (projected.x * 0.5 + 0.5) * w;
+      const anchorY = (-projected.y * 0.5 + 0.5) * h;
+
+      const slot = gridSlots[i % gridSlots.length];
+      const boxX = slot.x;
+      const boxY = slot.y;
+
+      const dockEdgeX = boxX + boxW / 2;
+      const dockEdgeY = boxY;
+
+      // Leader line: anchor -> elbow -> top-center of its box
+      const elbowY = Math.min(anchorY + 20, dockEdgeY - 14);
+      ctx.strokeStyle = entry.color;
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(anchorX, anchorY);
+      ctx.lineTo(anchorX, elbowY);
+      ctx.lineTo(dockEdgeX, elbowY);
+      ctx.lineTo(dockEdgeX, dockEdgeY);
+      ctx.stroke();
+
+      // Anchor dot
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = entry.color;
+      ctx.beginPath();
+      ctx.arc(anchorX, anchorY, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Docked label box
+      ctx.fillStyle = 'rgba(8, 14, 28, 0.92)';
+      ctx.strokeStyle = entry.color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(boxX, boxY, boxW, boxH);
+      ctx.clip();
+
+      ctx.fillStyle = entry.color;
+      ctx.font = 'bold 10px Inter, sans-serif';
+      ctx.fillText(entry.title, boxX + 8, boxY + 14, boxW - 16);
+
+      ctx.fillStyle = '#e6edf3';
+      ctx.font = '8.5px "JetBrains Mono", monospace';
+      entry.lines.forEach((line, idx) => {
+        ctx.fillText(line, boxX + 8, boxY + 26 + idx * 10, boxW - 16);
+      });
+      ctx.restore();
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -1061,6 +1185,8 @@ class AeroEngine3D {
   updateTelemetryState(data) {
     if (data.telemetry) {
       const tel = data.telemetry;
+      this.lastTelemetry = tel;
+      this.lastComponentHealth = data.component_health || this.lastComponentHealth;
       this.rpm = tel.rpm || 4535.4;
       this.cht = isNaN(tel.cht) ? 210.0 : (tel.cht || 148.6);
       this.egt = tel.egt || 667.7;
@@ -1096,31 +1222,34 @@ class AeroEngine3D {
         const envelopeTag = currentRul < 50 ? `EMERGENCY RTB: ${sustainTag}` : `SUSTAIN: ${sustainTag}`;
 
         this.updateCalloutData('uav', [
-          `VIBRATION: ${vib.toFixed(2)} G (RMS) | ${envelopeTag}`,
-          `FREQ: ${freqHz} Hz | AMB: ${ambTemp > 0 ? '+' : ''}${ambTemp.toFixed(1)}°C | ALT: ${Math.round(alt).toLocaleString()} ft`
+          `VIB: ${vib.toFixed(2)} g RMS`,
+          `ALT: ${Math.round(alt).toLocaleString()} ft`,
+          envelopeTag
         ], vibColor);
 
         // 2. Engine Callout
         const engColor = this.cht >= 200.0 ? '#f43f5e' : (this.cht >= 175.0 ? '#f59e0b' : '#f59e0b');
-        const engStatus = this.cht >= 200.0 ? 'THERMAL ALERT' : (data.fault_archetype === 'oil_starvation' ? 'OIL STARVED' : 'CRUISE NOMINAL');
+        const engStatus = this.cht >= 200.0 ? 'THERMAL ALERT' : (data.fault_archetype === 'oil_starvation' ? 'OIL STARVED' : 'NOMINAL');
         this.updateCalloutData('engine', [
-          `RPM: ${Math.round(this.rpm)} | CHT: ${this.cht.toFixed(1)}°C | EGT: ${this.egt.toFixed(1)}°C`,
-          `COOLING: ${coolingFactor}x | STATUS: ${engStatus}`
+          `RPM ${Math.round(this.rpm)}  CHT ${this.cht.toFixed(1)}°`,
+          `EGT ${this.egt.toFixed(1)}°  x${coolingFactor}`,
+          engStatus
         ], engColor);
 
         // 3. Battery Callout
         const loadA = (12.0 + (alt / 10000.0) * 1.5).toFixed(1);
         this.updateCalloutData('battery', [
-          `BUS: 28.4 V | LOAD: ${loadA} A`,
-          `CHARGE: 100% | CELL BAL: OPTIMAL`
+          `BUS 28.4V  ${loadA}A`,
+          `CHARGE 100%`
         ], '#10b981');
 
         // 4. Fluid Loop Callout
         const loopColor = oilP < 200.0 ? '#f43f5e' : '#06b6d4';
-        const loopStatus = oilP < 200.0 ? 'LOW PRESSURE ALERT' : 'CIRCULATION OK';
+        const loopStatus = oilP < 200.0 ? 'LOW PRESSURE' : 'CIRCULATION OK';
         this.updateCalloutData('loop', [
-          `FLOW: ${fuelFlow.toFixed(2)} L/h | OIL P: ${oilP.toFixed(1)} kPa`,
-          `OIL TEMP: ${oilTemp.toFixed(1)}°C | ${loopStatus}`
+          `FLOW ${fuelFlow.toFixed(1)}L/h`,
+          `OIL P ${oilP.toFixed(0)}  T ${oilTemp.toFixed(0)}°`,
+          loopStatus
         ], loopColor);
       }
     }
@@ -1253,7 +1382,13 @@ class AeroEngine3D {
     }
 
     this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    this.drawLeaderLines();
+
+    if (this.composer) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   onResize() {
@@ -1263,5 +1398,89 @@ class AeroEngine3D {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
+    if (this.composer) this.composer.setSize(width, height);
+    if (this.bloomPass) this.bloomPass.resolution.set(width, height);
+    if (this.leaderCanvas) {
+      this.leaderCanvas.width = width;
+      this.leaderCanvas.height = height;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // 7. Raycasted Component Hotspots (click a component -> floating metric card)
+  // -------------------------------------------------------------------------
+  setupHotspots() {
+    const proxyDefs = [
+      { id: 'cylinder_head', label: 'Cylinder Head', size: [0.6, 0.5, 1.2], center: [-0.55, 0.38, 0.0], fields: ['cht', 'egt'], healthKey: 'cylinder_head' },
+      { id: 'crankshaft', label: 'Crankshaft', size: [0.25, 0.25, 1.6], center: [0.0, 0.0, 0.0], fields: ['vibration_rms', 'rpm'], healthKey: 'crankshaft' },
+      { id: 'oil_sump', label: 'Oil Sump / Lube', size: [0.9, 0.35, 1.1], center: [0.0, -0.55, 0.0], fields: ['oil_pressure', 'oil_temp'], healthKey: 'lubrication_system' },
+      { id: 'exhaust_manifold', label: 'Exhaust Manifold', size: [0.25, 0.3, 1.1], center: [0.88, -0.08, 0.0], fields: ['egt', 'fuel_flow'], healthKey: 'exhaust_manifold' },
+    ];
+
+    this.hotspotDefs = {};
+    proxyDefs.forEach((def) => {
+      const geo = new THREE.BoxGeometry(...def.size);
+      const mat = new THREE.MeshBasicMaterial({ visible: false });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(...def.center);
+      mesh.userData.hotspotId = def.id;
+      this.scene.add(mesh);
+      this.proxyMeshes.push(mesh);
+      this.hotspotDefs[def.id] = def;
+    });
+
+    this.hotspotCard = document.createElement('div');
+    this.hotspotCard.id = 'hotspot-card';
+    Object.assign(this.hotspotCard.style, {
+      position: 'absolute', display: 'none', background: 'rgba(6, 12, 26, 0.94)',
+      border: '1px solid rgba(88, 166, 255, 0.4)', borderRadius: '8px', padding: '10px 14px',
+      minWidth: '180px', color: '#c8d1dc', fontFamily: 'Inter, sans-serif', fontSize: '11px',
+      lineHeight: '1.7', boxShadow: '0 4px 24px rgba(0,0,0,0.5)', zIndex: '50', pointerEvents: 'none',
+    });
+    document.body.appendChild(this.hotspotCard);
+
+    this.canvas.addEventListener('click', (evt) => {
+      const rect = this.canvas.getBoundingClientRect();
+      this.mouse.x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
+      this.mouse.y = -((evt.clientY - rect.top) / rect.height) * 2 + 1;
+      this.raycaster.setFromCamera(this.mouse, this.camera);
+      const hits = this.raycaster.intersectObjects(this.proxyMeshes);
+      if (hits.length > 0) {
+        this.showHotspotCard(hits[0].object.userData.hotspotId, evt.clientX, evt.clientY);
+      } else {
+        this.hotspotCard.style.display = 'none';
+      }
+    });
+  }
+
+  showHotspotCard(id, screenX, screenY) {
+    const def = this.hotspotDefs && this.hotspotDefs[id];
+    if (!def) return;
+    const tel = this.lastTelemetry || {};
+    const health = (this.lastComponentHealth || {})[def.healthKey];
+
+    let html = `<div style="font-weight:700;font-size:12px;margin-bottom:5px;color:#58a6ff">${def.label}</div>`;
+    def.fields.forEach((f) => {
+      const v = tel[f];
+      const label = f.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+      const vStr = (v !== undefined && v !== null && !Number.isNaN(v)) ? v.toFixed(1) : '—';
+      html += `<div><span style="color:#6b7785">${label}:</span> <b>${vStr}</b></div>`;
+    });
+    if (health !== undefined) {
+      const pct = Math.round(health * 100);
+      const col = health > 0.75 ? '#3fb950' : health > 0.45 ? '#d29922' : '#f85149';
+      html += `<div style="margin-top:4px"><span style="color:#6b7785">Component health:</span> <b style="color:${col}">${pct}%</b></div>`;
+    }
+    this.hotspotCard.innerHTML = html;
+    this.hotspotCard.style.display = 'block';
+
+    const margin = 14;
+    let x = screenX + margin;
+    let y = screenY + margin;
+    const rect = this.hotspotCard.getBoundingClientRect();
+    if (x + rect.width > window.innerWidth) x = screenX - rect.width - margin;
+    if (y + rect.height > window.innerHeight) y = screenY - rect.height - margin;
+    this.hotspotCard.style.left = `${x}px`;
+    this.hotspotCard.style.top = `${y}px`;
   }
 }

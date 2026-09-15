@@ -11,12 +11,13 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 import numpy as np
 import torch
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -28,7 +29,16 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT))
 FRONTEND_DIR = ROOT / "frontend"
 
-app = FastAPI(title="SIH26054 MALE UAV Engine Digital Twin Server", version="1.0.0")
+from fastapi.responses import RedirectResponse
+from sqlalchemy.orm import Session
+
+from auth.routes import router as auth_router, get_current_user
+from auth.security import COOKIE_NAME, decode_session_token
+from db.models import User, Mission, FaultEvent
+from db.session import get_session, get_sessionmaker
+
+app = FastAPI(title="PRAHARI — SIH26054 MALE UAV Engine Digital Twin Server", version="1.0.0")
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,8 +80,20 @@ _FAULT_ARCHETYPES = {
 }
 
 
-def _presim(fault_type: Optional[str], total_cycles: int, seed: int = 7) -> tuple:
-    """Run EngineSim for one fault archetype and return (data_dict, truth_dict)."""
+def _presim(fault_type: Optional[str], total_cycles: int, seed: int = 7,
+            initial_health: float = 0.92, degradation_driver: float = 1.05) -> tuple:
+    """Run EngineSim for one fault archetype and return (data_dict, truth_dict).
+
+    EngineSim's health trajectory is *always* a run-to-failure curve that
+    reaches health~0 at the end of `total_cycles`, by design (it's meant to
+    generate RUL training data). For the injected fault archetypes that's
+    exactly what we want — the fault should develop into a real failure
+    within a demo-length window. But the nominal/no-fault baseline reused
+    this same short 1200-cycle (120s @ 10Hz) horizon, so "NOMINAL CRUISE"
+    silently degraded into a critical-looking state every ~2 minutes and
+    wrapped back to healthy — see the caller for the actual fix (a much
+    longer, near-1.0-health nominal trajectory).
+    """
     try:
         from sim.engine_sim import EngineSim, MissionProfile
         bias = _FAULT_ARCHETYPES.get(fault_type, {})
@@ -79,8 +101,8 @@ def _presim(fault_type: Optional[str], total_cycles: int, seed: int = 7) -> tupl
             total_cycles=total_cycles,
             seed=seed,
             profile=MissionProfile.cruise_dominant(total_cycles),
-            initial_health=0.92,
-            degradation_driver=1.05,
+            initial_health=initial_health,
+            degradation_driver=degradation_driver,
             failure_bias=bias,
         )
         return sim.run(add_noise=True)
@@ -105,7 +127,24 @@ class SimulationController:
     falls back to the previous hand-scripted physics and logs a warning.
     """
 
-    _TOTAL_CYCLES = 1200   # pre-simulated trajectory length (each fault mode)
+    _TOTAL_CYCLES = 1200          # pre-simulated trajectory length for injected fault archetypes
+
+    # Fault modes that do NOT use an EngineSim archetype trajectory as their
+    # physics base — nominal cruise, and the two sensor-level faults that are
+    # NaN/bias overlays rather than a mechanical failure archetype. All three
+    # instead use the hand-scripted steady-cruise physics in _step_scripted(),
+    # which is calibrated to sit at the app's advertised nominal baseline
+    # (~148.6°C CHT, ~1.41g vibration) and decays health extremely slowly.
+    #
+    # Why not just precompute a "None" EngineSim trajectory like the other
+    # archetypes? EngineSim's MissionProfile.cruise_dominant() includes
+    # climb/descent power segments by design (it's meant to generate varied
+    # RUL training data) — even at initial_health=1.0 its CHT swings well
+    # into caution/critical territory (measured: 183-217°C across a 6000-step
+    # run), which reads as a false alarm under a button literally labelled
+    # "NOMINAL CRUISE". The hand-scripted path is the one actually designed
+    # to hold steady.
+    _NON_ARCHETYPE_FAULTS = (None, "sensor_dropout", "sensor_drift")
 
     def __init__(self):
         self.cycle         = 0
@@ -118,10 +157,12 @@ class SimulationController:
         self.air_density   = 0.812
         self.cooling_factor = 1.0
 
-        # ---- Pre-compute trajectories for all fault archetypes ---------------
+        # ---- Pre-compute trajectories for the mechanical fault archetypes ----
         print("[LiveEngineSim] Pre-computing fault trajectories (this takes ~2–5 s) …")
         self._trajs: Dict[Optional[str], tuple] = {}
         for fault in list(_FAULT_ARCHETYPES.keys()):
+            if fault in self._NON_ARCHETYPE_FAULTS:
+                continue
             data, truth = _presim(fault, self._TOTAL_CYCLES)
             if data is not None:
                 self._trajs[fault] = (data, truth)
@@ -137,6 +178,8 @@ class SimulationController:
 
     def _reset_state_attrs(self):
         """Initialise all sensor attributes to nominal cruise values."""
+        self.throttle     = 0.72   # undo any DRL shield de-rate from a prior fault
+        self.mixture      = 13.8
         self.rpm          = 4535.4
         self.cht          = 148.6
         self.egt          = 667.7
@@ -165,20 +208,21 @@ class SimulationController:
     def step(self) -> Dict[str, float]:
         self.cycle += 1
 
-        # ---- EngineSim path -------------------------------------------------
-        if self._using_enginesim:
-            return self._step_enginesim()
+        # ---- Steady hand-scripted path: nominal cruise + sensor-level faults --
+        if self.injected_fault in self._NON_ARCHETYPE_FAULTS or not self._using_enginesim:
+            return self._step_scripted()
 
-        # ---- Fallback: hand-scripted path -----------------------------------
-        return self._step_scripted()
+        # ---- EngineSim path: mechanical fault archetypes ---------------------
+        return self._step_enginesim()
 
     def _step_enginesim(self) -> Dict[str, float]:
         """Advance one cycle using the pre-computed EngineSim trajectory."""
         from sim.engine_sim import SENSOR_ORDER
 
-        # Select active trajectory (fall back to nominal if archetype not cached)
-        fault_key = self.injected_fault if self.injected_fault in self._trajs else None
-        data, truth = self._trajs[fault_key]
+        # This path only runs for the mechanical archetype faults (step()
+        # routes nominal/sensor_dropout/sensor_drift to _step_scripted()
+        # instead), so the trajectory is always cached under the exact key.
+        data, truth = self._trajs[self.injected_fault]
 
         # Index: wrap around if we exceed the pre-simulated length
         idx = (self.cycle - 1) % self._TOTAL_CYCLES
@@ -212,17 +256,16 @@ class SimulationController:
         self.coolant_temp = frame.get("coolant_temp", 82.0)
         self.health       = float(truth["health"][idx])
 
-        # sensor_dropout: inject NaN on top of any physics trajectory
-        if self.injected_fault == "sensor_dropout":
-            frame["cht"]          = float("nan")
-            frame["oil_pressure"] = -999.0
+        # sensor_dropout/sensor_drift are handled entirely in _step_scripted()
+        # (see step()'s dispatch) — this path only ever runs for the genuine
+        # mechanical archetype faults, so no NaN/drift overlay is needed here.
 
         return {
             "rpm":           round(self.rpm, 1),
-            "cht":           frame["cht"] if self.injected_fault == "sensor_dropout" else round(self.cht, 1),
+            "cht":           round(self.cht, 1),
             "egt":           round(self.egt, 1),
             "oil_temp":      round(self.oil_temp, 1),
-            "oil_pressure":  frame["oil_pressure"] if self.injected_fault == "sensor_dropout" else round(self.oil_pressure, 1),
+            "oil_pressure":  round(self.oil_pressure, 1),
             "fuel_flow":     round(self.fuel_flow, 2),
             "vibration_rms": round(self.vibration_rms, 2),
             "map":           round(self.map_kpa, 1),
@@ -277,6 +320,10 @@ class SimulationController:
             self.vibration_rms = self.vibration_rms + (2.05 - self.vibration_rms) * 0.04 + noise(0.01)
         elif self.injected_fault == "vibration_spike":
             self.vibration_rms = self.vibration_rms + (3.25 - self.vibration_rms) * 0.08 + noise(0.02)
+        elif self.injected_fault == "sensor_drift":
+            drift_frac = min(1.0, self.cycle / 400.0)
+            self.cht         = self.cht + drift_frac * 0.1
+            self.oil_pressure = self.oil_pressure - drift_frac * 0.25
         else:
             phase = (self.cycle / 55.0) * 2.0 * np.pi
             self.cht          = self.cht + (base_cht + deg_factor * 15.0 + 0.85 * np.sin(phase) - self.cht) * 0.08
@@ -322,15 +369,26 @@ try:
 except Exception as e:
     print(f"[Server] PINN load note: {e}")
 
+fault_classifiers = []  # Layer 2 ensemble: every independently-seeded checkpoint found
 try:
     cls_p = ROOT / "models" / "checkpoints" / "fault_classifier.pt"
-    if cls_p.exists():
-        from classifier.fault_classifier import FaultClassifierNet
-        data = torch.load(cls_p, map_location="cpu", weights_only=False)
-        fault_classifier = FaultClassifierNet(in_channels=12, num_classes=4, hidden=48)
-        fault_classifier.load_state_dict(data["state_dict"])
-        fault_classifier.eval()
-        print("[Server] Loaded Fault Classifier checkpoint successfully")
+    from classifier.fault_classifier import FaultClassifierNet
+    ensemble_paths = sorted((ROOT / "models" / "checkpoints").glob("fault_classifier*.pt"))
+    for p in ensemble_paths:
+        try:
+            data = torch.load(p, map_location="cpu", weights_only=False)
+            m = FaultClassifierNet(in_channels=12, num_classes=4, hidden=48)
+            m.load_state_dict(data["state_dict"])
+            m.eval()
+            fault_classifiers.append(m)
+            if p == cls_p:
+                fault_classifier = m
+        except Exception as _me:
+            print(f"[Server] Classifier ensemble member {p.name} load note: {_me}")
+    if fault_classifiers and fault_classifier is None:
+        fault_classifier = fault_classifiers[0]
+    print(f"[Server] Loaded {len(fault_classifiers)} Fault Classifier ensemble checkpoint(s): "
+          f"{[p.name for p in ensemble_paths]}")
 except Exception as e:
     print(f"[Server] Classifier load note: {e}")
 
@@ -398,9 +456,11 @@ except Exception as _e:
 print(f"[Server] Benchmark metadata loaded: {_ckpt_meta}")
 
 from agent.orchestrator import DigitalTwinOrchestrator
+from agent.defense_layers import sign_packet, verify_packet
 orchestrator = DigitalTwinOrchestrator(
     pinn_model=pinn_model,
     fault_classifier=fault_classifier,
+    fault_classifiers=fault_classifiers,
     drl_policy=drl_policy,
 )
 
@@ -513,6 +573,77 @@ async def get_benchmarks_raw():
     return {"checkpoint_metadata": _ckpt_meta}
 
 
+# --------------------------------------------------------------------------- #
+# Dashboard API — mission history + summary stats from Postgres              #
+# --------------------------------------------------------------------------- #
+from auth.routes import require_user  # noqa: E402  (after app/router setup above)
+
+
+_ensemble_acc_cache: Optional[float] = None
+
+
+@app.get("/api/dashboard/summary")
+async def dashboard_summary(user: User = Depends(require_user), db: Session = Depends(get_session)):
+    missions = db.query(Mission).all()
+    total_missions = len(missions)
+    total_seconds = sum((m.frame_count or 0) * 0.1 for m in missions)
+    critical_events = db.query(FaultEvent).filter(FaultEvent.severity == "CRITICAL").count()
+
+    global _ensemble_acc_cache
+    ensemble_acc = _ensemble_acc_cache
+    if ensemble_acc is None:
+        try:
+            from eval.benchmarks import evaluate_classifier_ensemble
+            # Runs the ensemble against ~7k held-out windows once per server
+            # process — slow enough that it must not block the 10 Hz WS loop,
+            # and unnecessary to redo per request since checkpoints don't
+            # change during a running server session.
+            result = await asyncio.to_thread(evaluate_classifier_ensemble)
+            if result.get("ensemble_accuracy") is not None:
+                ensemble_acc = round(result["ensemble_accuracy"] * 100, 1)
+                _ensemble_acc_cache = ensemble_acc
+        except Exception:
+            pass  # falls back to self-reported clf_test_acc below
+
+    benchmarks = dict(_ckpt_meta)
+    if ensemble_acc is not None:
+        benchmarks["clf_ensemble_accuracy"] = ensemble_acc
+
+    return {
+        "total_missions": total_missions,
+        "total_telemetry_seconds": total_seconds,
+        "critical_events": critical_events,
+        "benchmarks": benchmarks,
+    }
+
+
+@app.get("/api/dashboard/missions")
+async def dashboard_missions(limit: int = 25, user: User = Depends(require_user), db: Session = Depends(get_session)):
+    missions = (
+        db.query(Mission)
+        .order_by(Mission.started_at.desc())
+        .limit(min(limit, 100))
+        .all()
+    )
+    out = []
+    for m in missions:
+        duration = None
+        if m.ended_at:
+            duration = (m.ended_at - m.started_at).total_seconds()
+        out.append({
+            "id": m.id,
+            "started_at": m.started_at.isoformat() if m.started_at else None,
+            "ended_at": m.ended_at.isoformat() if m.ended_at else None,
+            "duration_seconds": duration,
+            "frame_count": m.frame_count,
+            "final_fault_archetype": m.final_fault_archetype,
+            "final_rul_cycles": m.final_rul_cycles,
+            "had_critical_event": m.had_critical_event,
+            "event_count": len(m.events),
+        })
+    return out
+
+
 @app.post("/api/simulate/inject")
 async def inject_fault(req: FaultInjectionRequest):
     """Trigger or clear a fault injection in the live telemetry stream."""
@@ -554,11 +685,81 @@ async def reset_simulation():
     return {"success": True, "message": "Simulation reset"}
 
 
+# --------------------------------------------------------------------------- #
+# Mission/event persistence — one Mission row per WS connection, one          #
+# FaultEvent row per fault/severity state transition. Every DB call runs in   #
+# a thread (asyncio.to_thread) so a slow/unavailable Postgres never stalls    #
+# the 10 Hz telemetry loop, and every call is wrapped so a DB error is        #
+# logged but never breaks the live stream.                                    #
+# --------------------------------------------------------------------------- #
+def _create_mission(user_id: Optional[str]) -> Optional[str]:
+    try:
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            mission = Mission(user_id=user_id)
+            db.add(mission)
+            db.commit()
+            return mission.id
+    except Exception as e:
+        print(f"[Persist] Could not create mission row: {e}")
+        return None
+
+
+def _log_fault_event(mission_id: Optional[str], fault: str, severity: str, confidence: float, detail: str = ""):
+    if not mission_id:
+        return
+    try:
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            db.add(FaultEvent(
+                mission_id=mission_id, fault_archetype=fault,
+                severity=severity, confidence=confidence, detail=detail,
+            ))
+            db.commit()
+    except Exception as e:
+        print(f"[Persist] Could not log fault event: {e}")
+
+
+def _close_mission(mission_id: Optional[str], frame_count: int, final_fault: str,
+                    final_rul: Optional[float], had_critical: bool):
+    if not mission_id:
+        return
+    try:
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            mission = db.get(Mission, mission_id)
+            if mission:
+                mission.ended_at = datetime.now(timezone.utc)
+                mission.frame_count = frame_count
+                mission.final_fault_archetype = final_fault
+                mission.final_rul_cycles = final_rul
+                mission.had_critical_event = had_critical
+                db.commit()
+    except Exception as e:
+        print(f"[Persist] Could not close mission row: {e}")
+
+
 @app.websocket("/ws/telemetry")
 async def telemetry_websocket(websocket: WebSocket):
-    """High-frequency (10 Hz) live telemetry and orchestrator dispatch stream."""
+    """High-frequency (10 Hz) live telemetry and orchestrator dispatch stream.
+
+    Auth-gated on the same session cookie the HTML pages use — WebSocket
+    doesn't go through FastAPI's Depends() for cookies the way HTTP routes
+    do, so the token is decoded directly from websocket.cookies.
+    """
+    token = websocket.cookies.get(COOKIE_NAME)
+    session_payload = decode_session_token(token) if token else None
+    if not session_payload:
+        await websocket.close(code=4401)
+        return
+
     await websocket.accept()
-    print("[WebSocket] Client connected")
+    print(f"[WebSocket] Client connected (user={session_payload.get('email')})")
+
+    mission_id = await asyncio.to_thread(_create_mission, session_payload.get("sub"))
+    last_fault, last_severity = "nominal", "NOMINAL"
+    frame_count, had_critical = 0, False
+    final_fault, final_rul = "nominal", None
 
     try:
         while True:
@@ -575,7 +776,38 @@ async def telemetry_websocket(websocket: WebSocket):
                 sim.throttle = float(np.clip(sim.throttle + drl_act.get("delta_throttle", 0.0), 0.50, 0.90))
                 sim.mixture = float(np.clip(sim.mixture + drl_act.get("delta_mixture", 0.0) * 1.5, 12.0, 15.0))
 
-            # 4. Stream JSON payload to client
+            # 4. Layer 3 — sign the outgoing packet (HMAC-SHA256) and self-verify
+            #    before it leaves the server, demonstrating tamper/replay rejection
+            #    on the transport boundary without needing a second trust domain.
+            body_json = json.dumps(dispatch, sort_keys=True)
+            send_ts = time.time()
+            signature = sign_packet(body_json)
+            dispatch["integrity"] = {
+                "signature": signature,
+                "timestamp": send_ts,
+                "verified": verify_packet(body_json, signature, send_ts),
+            }
+
+            # 5. Persist a FaultEvent row whenever the fault archetype or its
+            #    severity changes — a server-side mirror of telemetry_store.js's
+            #    EventLog.checkTransitions, but durable across page refreshes.
+            frame_count += 1
+            fault = dispatch.get("fault_archetype", "nominal")
+            confidence = dispatch.get("fault_confidence", 0.0)
+            severity = "CRITICAL" if (fault != "nominal" and confidence > 0.8) else \
+                       ("MODERATE" if fault != "nominal" else "NOMINAL")
+            final_fault = fault
+            final_rul = dispatch.get("adjusted_rul", dispatch.get("rul_cycles"))
+            if severity == "CRITICAL":
+                had_critical = True
+            if fault != last_fault or severity != last_severity:
+                asyncio.create_task(asyncio.to_thread(
+                    _log_fault_event, mission_id, fault, severity, confidence,
+                    dispatch.get("drl_action", {}).get("recommendation", ""),
+                ))
+                last_fault, last_severity = fault, severity
+
+            # 6. Stream JSON payload to client
             await websocket.send_text(json.dumps(dispatch))
             await asyncio.sleep(0.1)  # 10 Hz rate
 
@@ -585,28 +817,56 @@ async def telemetry_websocket(websocket: WebSocket):
         import traceback
         print(f"[WebSocket] Error: {e}")
         traceback.print_exc()
+    finally:
+        await asyncio.to_thread(_close_mission, mission_id, frame_count, final_fault, final_rul, had_critical)
 
 
 # Mount frontend static directory if exists
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
-    @app.get("/", response_class=HTMLResponse)
-    async def index():
-        index_file = FRONTEND_DIR / "index.html"
-        if index_file.exists():
+    def _serve_page(name: str) -> HTMLResponse:
+        page_file = FRONTEND_DIR / name
+        if page_file.exists():
             return HTMLResponse(
-                content=index_file.read_text(encoding="utf-8"),
+                content=page_file.read_text(encoding="utf-8"),
                 headers={
                     "Cache-Control": "no-cache, no-store, must-revalidate",
                     "Pragma": "no-cache",
                     "Expires": "0"
                 }
             )
-        return HTMLResponse("<h3>Dashboard frontend directory found, index.html not found.</h3>")
+        return HTMLResponse(f"<h3>{name} not found.</h3>", status_code=404)
+
+    @app.get("/")
+    async def index(user: Optional[User] = Depends(get_current_user)):
+        return RedirectResponse("/dashboard" if user else "/login")
+
+    @app.get("/login", response_class=HTMLResponse)
+    async def login_page(user: Optional[User] = Depends(get_current_user)):
+        if user:
+            return RedirectResponse("/dashboard")
+        return _serve_page("login.html")
+
+    @app.get("/dashboard", response_class=HTMLResponse)
+    async def dashboard_page(user: Optional[User] = Depends(get_current_user)):
+        if not user:
+            return RedirectResponse("/login")
+        return _serve_page("dashboard.html")
+
+    @app.get("/app", response_class=HTMLResponse)
+    async def live_console_page(user: Optional[User] = Depends(get_current_user)):
+        if not user:
+            return RedirectResponse("/login")
+        return _serve_page("index.html")
 
     @app.get("/{file_name:path}")
     async def serve_static_root(file_name: str):
+        # .html pages are only ever served through the explicit, auth-gated
+        # routes above (/login, /dashboard, /app) — block direct access to
+        # the raw files here so those gates can't be bypassed by path.
+        if file_name.endswith(".html"):
+            return JSONResponse(status_code=404, content={"detail": "File not found"})
         target = (FRONTEND_DIR / file_name).resolve()
         if FRONTEND_DIR in target.parents and target.exists() and target.is_file():
             media_type = None

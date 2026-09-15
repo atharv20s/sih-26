@@ -4,11 +4,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SIH26054 — Aero Engine Digital Twin (PINN + DRL + LangGraph)</title>
+  <title>PRAHARI — Live Ops Console (SIH26054)</title>
   <link rel="stylesheet" href="/static/styles.css?v=20260910_01">
   <!-- Three.js and OrbitControls from CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- Post-processing (subtle bloom on thermal redlines / critical alarms only) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/MaskPass.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 </head>
 
 <body>
@@ -16,10 +24,10 @@
   <!-- Top Aerospace Navbar -->
   <header class="top-navbar">
     <div class="brand-section">
-      <span class="drdo-badge">DRDO / SIH26054</span>
+      <a href="/dashboard" class="drdo-badge" style="text-decoration:none; display:inline-block;" title="Back to PRAHARI Dashboard">PRAHARI</a>
       <div class="system-title">
         <h1>TAPAS MALE UAV — AERO PROPULSION DIGITAL TWIN</h1>
-        <p>AGENTIC PINN-DRL PROGNOSTIC & MISSION RELIABILITY SYSTEM</p>
+        <p>DRDO / SIH26054 · AGENTIC PINN-DRL PROGNOSTIC & MISSION RELIABILITY SYSTEM</p>
       </div>
     </div>
 
@@ -156,6 +164,7 @@
     <section class="center-viewport">
       <div class="canvas-container" style="flex: 1; position: relative; min-height: 320px; overflow: hidden;">
         <canvas id="webgl-canvas"></canvas>
+        <canvas id="leader-line-canvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:5;"></canvas>
 
         <!-- Top-Left UAV Identifier Badge -->
         <div class="viewport-uav-pill">TAPAS MALE UAV - AERO PROPULSION DIGITAL TWIN</div>
@@ -402,6 +411,24 @@
         </div>
       </div>
 
+      <!-- Defense-Grade Layered Architecture Status (Layers 1-4) -->
+      <div class="hud-panel">
+        <div class="panel-title">
+          <span>Defense-Layer Status</span>
+          <span class="panel-badge">L1-L5</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; font-size:10px; padding:2px 2px 6px;">
+          <div style="color:#6b7785;">ENSEMBLE AGREEMENT</div>
+          <div id="defense-agreement" style="color:#c8d1dc; font-family:'JetBrains Mono',monospace; text-align:right;">—</div>
+          <div style="color:#6b7785;">ACTION MODE</div>
+          <div id="defense-action-mode" style="font-family:'JetBrains Mono',monospace; text-align:right; color:#3fb950;">—</div>
+          <div style="color:#6b7785;">COMMS INTEGRITY</div>
+          <div id="defense-integrity" style="color:#c8d1dc; font-family:'JetBrains Mono',monospace; text-align:right;">—</div>
+          <div style="color:#6b7785;">TREND / PHM RISK</div>
+          <div id="defense-trend-risk" style="color:#c8d1dc; font-family:'JetBrains Mono',monospace; text-align:right;">—</div>
+        </div>
+      </div>
+
       <!-- Dedicated Event Log (NASA Open MCT Standard) -->
       <div class="hud-panel">
         <div class="panel-title">
@@ -426,6 +453,7 @@
         <button class="inject-btn" data-fault="sensor_dropout">📉 SENSOR SIGNAL CORRUPTION</button>
         <button class="inject-btn" data-fault="oil_leak">🛢️ OIL PRESSURE LOSS</button>
         <button class="inject-btn" data-fault="vibration_spike">📳 BEARING VIBRATION SPIKE</button>
+        <button class="inject-btn" data-fault="sensor_drift" title="Gradual calibration bias ramping over ~40s — tests trend/PHM detection rather than an instant threshold">📈 SLOW SENSOR DRIFT</button>
       </div>
       <div>
         <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">

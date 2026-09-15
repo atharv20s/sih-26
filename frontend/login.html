@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRAHARI — Sign In</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260915_01">
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(ellipse at top, rgba(56, 189, 248, 0.08), transparent 60%), var(--bg-primary);
+      font-family: var(--font-sans);
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--bg-card);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      padding: 36px 32px;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .brand-glyph {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent-sky), var(--accent-cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 18px;
+      color: #041019;
+      flex-shrink: 0;
+    }
+
+    .brand-name {
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: 0.5px;
+    }
+
+    .brand-tagline {
+      color: var(--text-muted);
+      font-size: 11px;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      margin: 0 0 28px 0;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .field input {
+      width: 100%;
+      box-sizing: border-box;
+      background: rgba(4, 8, 16, 0.65);
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .field input:focus {
+      border-color: var(--accent-sky);
+    }
+
+    .login-btn {
+      width: 100%;
+      background: linear-gradient(135deg, var(--accent-sky), var(--accent-blue));
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      color: #ffffff;
+      font-family: var(--font-sans);
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.4px;
+      cursor: pointer;
+      margin-top: 6px;
+      transition: opacity 0.15s ease;
+    }
+
+    .login-btn:hover {
+      opacity: 0.9;
+    }
+
+    .login-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .error-msg {
+      color: var(--accent-rose);
+      font-size: 12px;
+      margin-top: 12px;
+      min-height: 16px;
+    }
+
+    .footnote {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border-card);
+      color: var(--text-muted);
+      font-size: 10.5px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="login-card">
+    <div class="brand-row">
+      <div class="brand-glyph">P</div>
+      <div class="brand-name">PRAHARI</div>
+    </div>
+    <p class="brand-tagline">Predictive Reliability &amp; Health Assessment · Rotary Intelligence</p>
+
+    <form id="login-form">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="login-btn" id="submit-btn">SIGN IN</button>
+      <div class="error-msg" id="error-msg"></div>
+    </form>
+
+    <div class="footnote">
+      DRDO / SIH26054 — Aero Engine Digital Twin ground station. Access is by seeded
+      account only; contact the project team for a login.
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('login-form');
+    const errorMsg = document.getElementById('error-msg');
+    const submitBtn = document.getElementById('submit-btn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorMsg.textContent = '';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'SIGNING IN...';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            email: document.getElementById('email').value,
+            password: document.getElementById('password').value,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || 'Invalid email or password');
+        }
+        window.location.href = '/dashboard';
+      } catch (err) {
+        errorMsg.textContent = err.message;
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'SIGN IN';
+      }
+    });
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,26 @@
+# PRAHARI — SIH26054 Aero Engine Digital Twin
+# Pinned to the versions this project was developed/tested against.
+
+# --- Web server & API ---
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.12.5
+websockets
+
+# --- Auth & security ---
+bcrypt==5.0.0
+PyJWT==2.11.0
+python-dotenv==1.0.0
+
+# --- Database (Neon Postgres) ---
+sqlalchemy==2.0.43
+psycopg[binary]==3.3.5
+
+# --- ML / simulation stack ---
+torch==2.8.0
+numpy==1.26.4
+pandas==2.3.2
+langgraph==1.0.10
+pyarrow
+scikit-learn
+matplotlib

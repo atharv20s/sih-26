@@ -1,4 +1,6 @@
-# SIH26054 — AI-Enabled Real-Time Digital Twin for MALE UAV Aero Piston Engines
+# PRAHARI — AI-Enabled Real-Time Digital Twin for MALE UAV Aero Piston Engines
+
+*PRAHARI (Predictive Reliability & Health Assessment for Rotary Intelligence) is the product name for the SIH26054 submission below — the authenticated dashboard + Neon Postgres persistence layer wraps the same digital twin described here. See "Dashboard, Auth & Persistence" further down.*
 
 <div align="center">
 
@@ -116,12 +118,16 @@ curl http://127.0.0.1:8000/api/benchmarks/raw
 ```
 sih26/
 ├── frontend/                          # WebGL 3D Dashboard & Client Scripts
-│   ├── index.html                     # Responsive HUD layout, gauges, & 3D viewport
+│   ├── login.html                     # PRAHARI sign-in page (seeded accounts only)
+│   ├── dashboard.html / dashboard.js  # Mission reliability dashboard — history + benchmarks from Postgres
+│   ├── index.html                     # Live Ops Console: HUD layout, gauges, & 3D viewport (served at /app)
 │   ├── app.js                         # Telemetry controller & WebSocket client
-│   ├── engine_3d.js                   # Three.js 3D engine mesh, lighting, & shaders
-│   ├── engine_3d_p1.js                # Clipping planes, raycasting, & sensor markers
+│   ├── engine_3d.js                   # Three.js 3D engine mesh, lighting, shaders, clipping, raycasted hotspots, leader-line callouts
 │   ├── styles.css                     # Dark-mode military glassmorphic design system
 │   └── assets/                        # 3D assets & texture maps
+│
+├── src/auth/                          # PRAHARI authentication (JWT cookie, bcrypt)
+├── src/db/                            # SQLAlchemy models + session (Neon Postgres)
 │
 ├── models/                            # Trained PyTorch Weights & Training Artifacts
 │   ├── checkpoints/
@@ -165,13 +171,32 @@ sih26/
 
 ### 1. Prerequisites & Environment Setup
 
-Ensure you have Python 3.10+ installed. Install the required dependencies:
+Ensure you have Python 3.10+ installed. Install all dependencies (pinned in `requirements.txt`):
 
 ```bash
-pip install torch torchvision numpy pandas scipy scikit-learn fastapi uvicorn websockets httpx pyarrow
+pip install -r requirements.txt
 ```
 
-### 2. Running the Digital Twin Server
+Copy `.env.example` to `.env` and fill in your own values:
+
+```bash
+cp .env.example .env
+```
+
+- `DATABASE_URL` — a Postgres connection string (SQLAlchemy + `psycopg` v3 driver prefix: `postgresql+psycopg://...`). Works with [Neon](https://neon.tech) out of the box.
+- `JWT_SECRET` — generate with `python -c "import secrets; print(secrets.token_hex(32))"`.
+- `TELEMETRY_HMAC_SECRET` — any random string; signs outgoing telemetry packets (Layer 3 of the defense architecture, see `MODEL_CARD.md`).
+
+### 2. Database Setup & Seeding a Login
+
+PRAHARI has no public signup form — access is by seeded account only:
+
+```bash
+python scripts/init_db.py                                                    # creates tables
+python scripts/create_user.py --email you@example.com --password "..." --name "Your Name"
+```
+
+### 3. Running the Digital Twin Server
 
 To start the real-time digital twin backend:
 
@@ -179,10 +204,21 @@ To start the real-time digital twin backend:
 uvicorn server.server:app --app-dir src --host 0.0.0.0 --port 8000 --reload
 ```
 
-Once the server initializes:
-- **Interactive 3D Dashboard:** Open [http://localhost:8000](http://localhost:8000) in any modern browser.
+Once the server initializes, open [http://localhost:8000](http://localhost:8000) — you'll be redirected to `/login`. After signing in:
+- **`/dashboard`** — PRAHARI's mission reliability dashboard: fleet-wide stats, model benchmark cards, and a history of every past session pulled from Postgres.
+- **`/app`** — the Live Ops Console: the full 3D digital twin, telemetry parameter rail, strip charts, Time Conductor, and fault-injection testbed described below. Every session run here is persisted as a `Mission` with its fault-event timeline.
 - **REST API Docs:** Interactive Swagger UI is available at [http://localhost:8000/docs](http://localhost:8000/docs).
 - **Dynamic Checkpoint Metadata:** Inspect verified checkpoint fields at [http://localhost:8000/api/benchmarks/raw](http://localhost:8000/api/benchmarks/raw).
+
+---
+
+## 🔐 Dashboard, Auth & Persistence
+
+PRAHARI adds three things on top of the digital twin engine:
+
+1. **Auth** (`src/auth/`) — JWT session tokens in an httpOnly cookie, passwords hashed with `bcrypt` directly (not passlib — see the comment in `src/auth/security.py` for why). No signup route; accounts are seeded via `scripts/create_user.py`.
+2. **Persistence** (`src/db/`) — SQLAlchemy models (`User`, `Mission`, `FaultEvent`) against Postgres. Every `/ws/telemetry` connection opens a `Mission` row and closes it on disconnect; every fault/severity state transition is written as a `FaultEvent` — a server-side, durable mirror of `frontend/telemetry_store.js`'s client-side `EventLog`. All writes run off the event loop (`asyncio.to_thread`) so a slow database never stalls the 10 Hz stream, and are wrapped so a DB error never breaks the live session.
+3. **Dashboard** (`frontend/dashboard.html` + `dashboard.js`) — reads `/api/dashboard/summary` and `/api/dashboard/missions` to show real historical data, not just the live demo.
 
 ---
 

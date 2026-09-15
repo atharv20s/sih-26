@@ -21,3 +21,6 @@ Claude outputs/
 *.log
 *.zip
 .system_generated/
+
+# Secrets — Neon Postgres connection string, JWT signing secret
+.env

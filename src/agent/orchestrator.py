@@ -25,6 +25,15 @@ import torch
 
 from langgraph.graph import StateGraph, END
 
+from agent.defense_layers import (
+    fuse_sensor_and_physics,
+    sensor_confidence_from_audit,
+    pinn_confidence_from_residual,
+    vote_fault_classification,
+    decide_action_mode,
+    compute_trend_risk,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
 
 # Sensor names and nominal cruise thresholds
@@ -54,6 +63,8 @@ class AgentState(TypedDict):
     window_buffer: List[Dict[str, float]]
     audit_results: Dict[str, Any]
     audited_telemetry: Dict[str, float]
+    fused_telemetry: Dict[str, float]
+    fusion_meta: Dict[str, Any]
     pinn_results: Dict[str, Any]
     fault_results: Dict[str, Any]
     drl_results: Dict[str, Any]
@@ -66,9 +77,16 @@ class AgentState(TypedDict):
 class DigitalTwinOrchestrator:
     """Agentic Orchestration Graph integrating PINN, DRL, and Sensor Auditor tools."""
 
-    def __init__(self, pinn_model=None, fault_classifier=None, drl_policy=None):
+    def __init__(self, pinn_model=None, fault_classifier=None, drl_policy=None, fault_classifiers=None):
         self.pinn_model = pinn_model
-        self.fault_classifier = fault_classifier
+        # Single-model back-compat: `fault_classifier` is folded into the ensemble list.
+        # `fault_classifiers`: list of independently-seeded FaultClassifierNet instances
+        # for Layer 2 majority-vote ensemble voting (see src/agent/defense_layers.py).
+        ensemble = list(fault_classifiers) if fault_classifiers else []
+        if fault_classifier is not None and fault_classifier not in ensemble:
+            ensemble.insert(0, fault_classifier)
+        self.fault_classifiers = ensemble
+        self.fault_classifier = fault_classifier  # kept for callers/UI checking single-model presence
         self.drl_policy = drl_policy
 
         # Load normalization parameters if available
@@ -300,10 +318,60 @@ class DigitalTwinOrchestrator:
         return {"pinn_results": pinn_results}
 
     # --------------------------------------------------------------------- #
-    # Fault Classifier Node                                                 #
+    # Layer 1: Sensor Fusion Node (confidence-weighted CHT/EGT fusion)      #
+    # --------------------------------------------------------------------- #
+    def fusion_node(self, state: AgentState) -> Dict[str, Any]:
+        """Fuses the audited sensor reading with a physics-consistent
+        expectation for the channels the PINN's residual actually informs
+        (CHT, EGT). See src/agent/defense_layers.py Layer 1.
+
+        The 'physics estimate' is a short-horizon trend continuity from the
+        last known-good frames (a lightweight process-model prediction, the
+        same role a Kalman filter's prior plays) - when the current reading
+        is flagged corrupted/imputed, or the physics residual is high, the
+        fused value leans away from the raw reading instead of trusting it.
+        """
+        audited = state.get("audited_telemetry", {})
+        audit = state.get("audit_results", {})
+        pinn = state.get("pinn_results", {})
+        buffer = state.get("window_buffer", [])
+
+        integrity_ok = audit.get("integrity_passed", True)
+        pinn_conf = pinn_confidence_from_residual(pinn.get("physics_residual", 0.2))
+
+        fused = dict(audited)
+        fusion_meta = {}
+        for field in ("cht", "egt"):
+            raw_val = audited.get(field)
+            if raw_val is None:
+                continue
+            sensor_conf = sensor_confidence_from_audit(field, audit, integrity_ok)
+            recent_vals = [f[field] for f in buffer[-6:-1] if field in f]
+            physics_estimate = float(np.mean(recent_vals)) if recent_vals else raw_val
+            fused_val = fuse_sensor_and_physics(raw_val, physics_estimate, sensor_conf, pinn_conf)
+            fused[field] = fused_val
+            fusion_meta[field] = {
+                "raw": round(raw_val, 2),
+                "physics_estimate": round(physics_estimate, 2),
+                "sensor_confidence": round(sensor_conf, 3),
+                "pinn_confidence": round(pinn_conf, 3),
+                "fused": round(fused_val, 2),
+            }
+
+        return {"fused_telemetry": fused, "fusion_meta": fusion_meta}
+
+    # --------------------------------------------------------------------- #
+    # Fault Classifier Node (Layer 2: N-of-M ensemble majority vote)        #
     # --------------------------------------------------------------------- #
     def fault_classifier_node(self, state: AgentState) -> Dict[str, Any]:
-        """Classifies degradation archetype (vibration, CHT, oil, EGT)."""
+        """Classifies degradation archetype (vibration, CHT, oil, EGT).
+
+        When 2+ independently-seeded checkpoints are loaded (self.fault_classifiers),
+        each votes independently and the result is majority-decided; disagreement
+        among members becomes `agreement_score`, the escalate-to-human signal
+        consumed by Layer 4's safe-mode gate. With 0-1 models loaded this degrades
+        gracefully to the original single-model/rule-based behavior.
+        """
         buffer = state.get("window_buffer", [])
         audited = state.get("audited_telemetry", {})
 
@@ -315,11 +383,32 @@ class DigitalTwinOrchestrator:
         # Check if engine is in anomalous fault regime
         is_anomalous = (cht > 175.0 or vib > 2.2 or oil_p < 235.0 or egt > 715.0)
 
+        def rule_based_fallback():
+            if cht > 175.0:
+                fc = "cht_over"
+                conf = min(0.98, max(0.65, cht / 210.0))
+                pr = {"cht_over": conf, "vibration_over": 0.15, "oil_starvation": 0.05, "egt_over": 0.05}
+            elif vib > 2.2:
+                fc = "vibration_over"
+                conf = min(0.98, max(0.65, vib / 3.2))
+                pr = {"cht_over": 0.05, "vibration_over": conf, "oil_starvation": 0.05, "egt_over": 0.05}
+            elif oil_p < 235.0:
+                fc = "oil_starvation"
+                conf = min(0.98, max(0.65, 1.0 - (oil_p - 130.0) / 105.0))
+                pr = {"cht_over": 0.05, "vibration_over": 0.15, "oil_starvation": conf, "egt_over": 0.05}
+            else:
+                fc = "egt_over"
+                conf = min(0.98, max(0.65, egt / 800.0))
+                pr = {"cht_over": 0.15, "vibration_over": 0.05, "oil_starvation": 0.05, "egt_over": conf}
+            return fc, conf, pr
+
+        agreement_score = 1.0  # trivial agreement for the nominal/single-source paths below
+
         if not is_anomalous:
             fault_class = "nominal"
             confidence = 0.98
             probs = {"cht_over": 0.02, "vibration_over": 0.02, "oil_starvation": 0.02, "egt_over": 0.02}
-        elif len(buffer) >= 5 and self.fault_classifier is not None:
+        elif len(buffer) >= 5 and self.fault_classifiers:
             window_len = 40
             frame_array = np.zeros((window_len, 12), dtype=np.float32)
             recent_frames = buffer[-window_len:]
@@ -334,51 +423,27 @@ class DigitalTwinOrchestrator:
 
             try:
                 from classifier.fault_classifier import predict_fault_from_window
-                res = predict_fault_from_window(self.fault_classifier, norm_window)
-                fault_class = res["fault_class"]
-                confidence = res["confidence"]
-                probs = res["probabilities"]
+                member_results = [predict_fault_from_window(m, norm_window) for m in self.fault_classifiers]
+                member_classes = [r["fault_class"] for r in member_results]
+                fault_class, agreement_score = vote_fault_classification(member_classes)
+                agreeing = [r for r in member_results if r["fault_class"] == fault_class]
+                confidence = float(np.mean([r["confidence"] for r in agreeing])) if agreeing else 0.5
+                # Average per-class probabilities across all members for a smoother gauge display
+                probs = {}
+                for cls in ("cht_over", "vibration_over", "oil_starvation", "egt_over"):
+                    probs[cls] = float(np.mean([r["probabilities"].get(cls, 0.0) for r in member_results]))
             except Exception:
-                # Rule-based fallback
-                if cht > 175.0:
-                    fault_class = "cht_over"
-                    confidence = min(0.98, max(0.65, cht / 210.0))
-                    probs = {"cht_over": confidence, "vibration_over": 0.15, "oil_starvation": 0.05, "egt_over": 0.05}
-                elif vib > 2.2:
-                    fault_class = "vibration_over"
-                    confidence = min(0.98, max(0.65, vib / 3.2))
-                    probs = {"cht_over": 0.05, "vibration_over": confidence, "oil_starvation": 0.05, "egt_over": 0.05}
-                elif oil_p < 235.0:
-                    fault_class = "oil_starvation"
-                    confidence = min(0.98, max(0.65, 1.0 - (oil_p - 130.0) / 105.0))
-                    probs = {"cht_over": 0.05, "vibration_over": 0.15, "oil_starvation": confidence, "egt_over": 0.05}
-                else:
-                    fault_class = "egt_over"
-                    confidence = min(0.98, max(0.65, egt / 800.0))
-                    probs = {"cht_over": 0.15, "vibration_over": 0.05, "oil_starvation": 0.05, "egt_over": confidence}
+                fault_class, confidence, probs = rule_based_fallback()
+                agreement_score = 1.0
         else:
-            # Rule-based fallback
-            if cht > 175.0:
-                fault_class = "cht_over"
-                confidence = min(0.98, max(0.65, cht / 210.0))
-                probs = {"cht_over": confidence, "vibration_over": 0.15, "oil_starvation": 0.05, "egt_over": 0.05}
-            elif vib > 2.2:
-                fault_class = "vibration_over"
-                confidence = min(0.98, max(0.65, vib / 3.2))
-                probs = {"cht_over": 0.05, "vibration_over": confidence, "oil_starvation": 0.05, "egt_over": 0.05}
-            elif oil_p < 235.0:
-                fault_class = "oil_starvation"
-                confidence = min(0.98, max(0.65, 1.0 - (oil_p - 130.0) / 105.0))
-                probs = {"cht_over": 0.05, "vibration_over": 0.15, "oil_starvation": confidence, "egt_over": 0.05}
-            else:
-                fault_class = "egt_over"
-                confidence = min(0.98, max(0.65, egt / 800.0))
-                probs = {"cht_over": 0.15, "vibration_over": 0.05, "oil_starvation": 0.05, "egt_over": confidence}
+            fault_class, confidence, probs = rule_based_fallback()
 
         fault_results = {
             "predicted_fault": fault_class,
             "confidence": round(confidence, 3),
             "probabilities": probs,
+            "agreement_score": round(agreement_score, 3),
+            "ensemble_size": len(self.fault_classifiers),
             "severity": "CRITICAL" if confidence > 0.8 and is_anomalous else ("NOMINAL" if not is_anomalous else "MODERATE"),
         }
         return {"fault_results": fault_results}
@@ -434,6 +499,29 @@ class DigitalTwinOrchestrator:
         else:
             drl_results = self._heuristic_drl(cht, vib, oil_p, rul)
 
+        # -------------------------------------------------------------- #
+        # Layer 4: Safe-mode gate. Autonomous action only proceeds when   #
+        # the fault-classifier ensemble agrees (Layer 2), the sensor      #
+        # audit passed (integrity), AND classifier confidence clears the  #
+        # threshold. Otherwise hold the last known-good recommendation    #
+        # and escalate to a human operator instead of guessing.           #
+        # -------------------------------------------------------------- #
+        audit = state.get("audit_results", {})
+        fault = state.get("fault_results", {})
+        action_mode = decide_action_mode(
+            agreement_score=fault.get("agreement_score", 1.0),
+            integrity_ok=audit.get("integrity_passed", True),
+            confidence=fault.get("confidence", 1.0),
+        )
+        drl_results["action_mode"] = action_mode
+        if action_mode == "SAFE_MODE_ESCALATE_TO_HUMAN" and drl_results.get("shield_applied"):
+            drl_results["delta_throttle"] = 0.0
+            drl_results["delta_mixture"] = 0.0
+            drl_results["recommendation"] = (
+                "SAFE MODE: low ensemble agreement or unverified telemetry — "
+                "holding last known-good setting, escalated to operator"
+            )
+
         return {"drl_results": drl_results}
 
     def _heuristic_drl(self, cht: float, vib: float, oil_p: float, rul: float) -> dict:
@@ -483,10 +571,16 @@ class DigitalTwinOrchestrator:
     def dispatch_node(self, state: AgentState) -> Dict[str, Any]:
         """Packages validated telemetry, PINN metrics, and DRL actions for the 3D HUD."""
         audited = state.get("audited_telemetry", {})
+        fused = state.get("fused_telemetry", audited)
+        fusion_meta = state.get("fusion_meta", {})
         pinn = state.get("pinn_results", {})
         fault = state.get("fault_results", {})
         drl = state.get("drl_results", {})
         audit = state.get("audit_results", {})
+        window_buffer = state.get("window_buffer", [])
+
+        # Layer 5: rolling-trend / PHM risk score across the last 20 audited frames
+        trend_risk_score = compute_trend_risk(window_buffer, window=20)
 
         # Compute individual physical health indices (bounded 0.20 to 1.0)
         cht = audited.get("cht", 150.0)
@@ -564,12 +658,15 @@ class DigitalTwinOrchestrator:
             "fault_archetype": fault.get("predicted_fault", "nominal"),
             "fault_confidence": fault.get("confidence", 0.0),
             "fault_probabilities": fault.get("probabilities", {}),
+            "fault_agreement_score": fault.get("agreement_score", 1.0),
+            "fault_ensemble_size": fault.get("ensemble_size", 0),
             "drl_action": {
                 "delta_throttle": drl.get("delta_throttle", 0.0),
                 "delta_mixture": drl.get("delta_mixture", 0.0),
                 "shield_applied": drl.get("shield_applied", False),
                 "recommendation": drl.get("recommendation", "Nominal"),
                 "warning_flag": drl.get("warning_flag", None),
+                "action_mode": drl.get("action_mode", "AUTONOMOUS_ACTION"),
             },
             "sensor_audit": {
                 "passed": audit.get("integrity_passed", True),
@@ -577,6 +674,9 @@ class DigitalTwinOrchestrator:
                 "imputed_fields": audit.get("imputed_fields", {}),
                 "total_corrections": state.get("self_correction_count", 0),
             },
+            "telemetry_fused": fused,
+            "fusion_meta": fusion_meta,
+            "trend_risk_score": round(trend_risk_score, 3),
             "component_health": {
                 "cylinder_head": round(disp_cyl, 3),
                 "crankshaft": round(disp_crank, 3),
@@ -601,14 +701,16 @@ class DigitalTwinOrchestrator:
 
         workflow.add_node("sensor_auditor", self.sensor_auditor_node)
         workflow.add_node("pinn_engine", self.pinn_engine_node)
+        workflow.add_node("fusion", self.fusion_node)
         workflow.add_node("fault_classifier", self.fault_classifier_node)
         workflow.add_node("drl_prognostics", self.drl_prognostics_node)
         workflow.add_node("dispatcher", self.dispatch_node)
 
-        # Graph execution path: Auditor -> PINN -> Fault Classifier -> DRL -> Dispatcher
+        # Graph execution path: Auditor -> PINN -> Fusion -> Fault Classifier -> DRL -> Dispatcher
         workflow.set_entry_point("sensor_auditor")
         workflow.add_edge("sensor_auditor", "pinn_engine")
-        workflow.add_edge("pinn_engine", "fault_classifier")
+        workflow.add_edge("pinn_engine", "fusion")
+        workflow.add_edge("fusion", "fault_classifier")
         workflow.add_edge("fault_classifier", "drl_prognostics")
         workflow.add_edge("drl_prognostics", "dispatcher")
         workflow.add_edge("dispatcher", END)
@@ -622,6 +724,8 @@ class DigitalTwinOrchestrator:
             "window_buffer": getattr(self, "_buffer", []),
             "audit_results": {},
             "audited_telemetry": {},
+            "fused_telemetry": {},
+            "fusion_meta": {},
             "pinn_results": {},
             "fault_results": {},
             "drl_results": {},

@@ -41,15 +41,25 @@ def parse_args():
     p.add_argument("--lr",        type=float, default=1e-3)
     p.add_argument("--device",    type=str,   default=None)
     p.add_argument("--log-every", type=int,   default=5)
+    p.add_argument("--seed",      type=int,   default=0,
+                    help="Random seed. Also selects the ensemble member checkpoint name "
+                         "(seed 0 -> fault_classifier.pt, seed N>0 -> fault_classifier_seedN.pt) "
+                         "unless --out overrides it. Used to train independent ensemble members "
+                         "for the Layer 2 majority-vote fault classifier.")
+    p.add_argument("--out",       type=str,   default=None,
+                    help="Checkpoint filename (relative to models/checkpoints/). Overrides the seed-based default.")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     processed = ROOT / "data" / "processed"
     ckpt_dir  = ROOT / "models" / "checkpoints"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    out_name = args.out or ("fault_classifier.pt" if args.seed == 0 else f"fault_classifier_seed{args.seed}.pt")
 
     print(f"[train_classifier] Loading dataset from {processed} ...")
     X_raw = np.load(processed / "X_raw_windows.npy")   # (N, T, 12) float32
@@ -162,11 +172,12 @@ def main():
         "val_acc":      best_acc,
         "test_acc":     test_acc,
         "fault_classes": FAULT_CLASSES,
-    }, ckpt_dir / "fault_classifier.pt")
+        "seed": args.seed,
+    }, ckpt_dir / out_name)
 
     print(f"\n[train_classifier] Best val acc: {best_acc*100:.1f}%  "
           f"Test acc: {test_acc*100:.1f}%")
-    print(f"[train_classifier] Checkpoint -> {ckpt_dir / 'fault_classifier.pt'}")
+    print(f"[train_classifier] Checkpoint -> {ckpt_dir / out_name}")
 
 
 if __name__ == "__main__":

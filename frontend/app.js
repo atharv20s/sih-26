@@ -841,6 +841,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const drlText = document.getElementById('drl-text');
   const drlShieldBadge = document.getElementById('drl-shield-badge');
   const dataIntegrityStatus = document.getElementById('data-integrity-status');
+  const defenseAgreementEl = document.getElementById('defense-agreement');
+  const defenseActionModeEl = document.getElementById('defense-action-mode');
+  const defenseIntegrityEl = document.getElementById('defense-integrity');
+  const defenseTrendRiskEl = document.getElementById('defense-trend-risk');
 
   // Setup Fault Injection Buttons
   const injectBtns = document.querySelectorAll('.inject-btn');
@@ -1028,7 +1032,7 @@ document.addEventListener('DOMContentLoaded', () => {
         eventLog.checkTransitions(tel, missionSeconds);
         updateAnnunciators();
 
-        const imputedList = (data.sensor_audit && data.sensor_audit.imputed_fields) || [];
+        const imputedList = Object.keys((data.sensor_audit && data.sensor_audit.imputed_fields) || {});
         if (dataIntegrityStatus) {
           if (imputedList.length > 0) {
             dataIntegrityStatus.textContent = `${imputedList.length} IMPUTED`;
@@ -1094,6 +1098,29 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }
 
+          // 6b. Defense-grade layered architecture status (Layers 1-5)
+          if (defenseAgreementEl) {
+            const agree = data.fault_agreement_score !== undefined ? data.fault_agreement_score : 1.0;
+            const ensembleN = data.fault_ensemble_size || 0;
+            defenseAgreementEl.textContent = `${Math.round(agree * 100)}% (${ensembleN}-model)`;
+          }
+          if (defenseActionModeEl && data.drl_action) {
+            const mode = data.drl_action.action_mode || 'AUTONOMOUS_ACTION';
+            const safeMode = mode !== 'AUTONOMOUS_ACTION';
+            defenseActionModeEl.textContent = safeMode ? 'SAFE MODE' : 'AUTONOMOUS';
+            defenseActionModeEl.style.color = safeMode ? '#f85149' : '#3fb950';
+          }
+          if (defenseIntegrityEl) {
+            const verified = data.integrity ? data.integrity.verified : true;
+            defenseIntegrityEl.textContent = verified ? 'HMAC OK' : 'FAILED';
+            defenseIntegrityEl.style.color = verified ? '#3fb950' : '#f85149';
+          }
+          if (defenseTrendRiskEl) {
+            const risk = data.trend_risk_score !== undefined ? data.trend_risk_score : 0;
+            defenseTrendRiskEl.textContent = `${Math.round(risk * 100)}%`;
+            defenseTrendRiskEl.style.color = risk >= 0.66 ? '#f85149' : (risk >= 0.34 ? '#d29922' : '#c8d1dc');
+          }
+
           // 7. Update Subassembly Health Matrix
           if (data.component_health) {
             updateSubassemblyHealth(data.component_health, tel);
@@ -1109,7 +1136,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
+      if (event.code === 4401) {
+        // Session expired/invalid — server closed the socket rather than
+        // accepting it. Don't loop forever; send the operator back to login.
+        window.location.href = '/login';
+        return;
+      }
       console.log('[Telemetry WS] Connection lost, reconnecting in 2s...');
       if (wsStatus) {
         wsStatus.textContent = 'DISCONNECTED';

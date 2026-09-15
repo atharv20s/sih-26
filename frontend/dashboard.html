@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRAHARI — Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260915_01">
+  <style>
+    body {
+      margin: 0;
+      background: var(--bg-primary);
+      font-family: var(--font-sans);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    .dash-navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-card);
+    }
+
+    .dash-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-glyph {
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, var(--accent-sky), var(--accent-cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 15px;
+      color: #041019;
+    }
+
+    .dash-brand-name {
+      font-family: var(--font-display);
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+    }
+
+    .dash-brand-sub {
+      font-size: 10px;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .dash-navbar-right {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .user-pill {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: var(--font-mono);
+    }
+
+    .btn {
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      border-radius: var(--radius-sm);
+      padding: 9px 16px;
+      cursor: pointer;
+      border: 1px solid var(--border-card);
+      background: transparent;
+      color: var(--text-secondary);
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      border-color: var(--accent-sky);
+      color: var(--text-primary);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-sky), var(--accent-blue));
+      color: #ffffff;
+      border: none;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.9;
+      color: #ffffff;
+    }
+
+    .dash-body {
+      padding: 28px;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    .dash-hero {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .dash-title {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 700;
+      margin: 0 0 4px 0;
+    }
+
+    .dash-subtitle {
+      color: var(--text-muted);
+      font-size: 12.5px;
+      margin: 0;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+    }
+
+    .stat-label {
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-value.accent-red { color: var(--accent-red); }
+    .stat-value.accent-emerald { color: var(--accent-emerald); }
+    .stat-value.accent-amber { color: var(--accent-amber); }
+
+    .stat-sub {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .panel {
+      background: var(--bg-card);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .panel-heading {
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0 0 16px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    thead th {
+      text-align: left;
+      color: var(--text-muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-card);
+    }
+
+    tbody td {
+      padding: 10px 10px;
+      border-bottom: 1px solid rgba(56, 189, 248, 0.08);
+      font-family: var(--font-mono);
+      color: var(--text-secondary);
+    }
+
+    tbody tr:hover {
+      background: rgba(56, 189, 248, 0.04);
+    }
+
+    .chip {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+
+    .chip-nominal { background: rgba(63, 185, 80, 0.15); color: var(--accent-emerald); }
+    .chip-fault { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+    .chip-live { background: rgba(56, 189, 248, 0.15); color: var(--accent-sky); }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="dash-navbar">
+    <div class="dash-brand">
+      <div class="brand-glyph">P</div>
+      <div>
+        <div class="dash-brand-name">PRAHARI</div>
+        <div class="dash-brand-sub">Mission Reliability Dashboard</div>
+      </div>
+    </div>
+    <div class="dash-navbar-right">
+      <span class="user-pill" id="user-email">—</span>
+      <a href="/app" class="btn btn-primary">LAUNCH LIVE OPS CONSOLE →</a>
+      <button class="btn" id="logout-btn">LOG OUT</button>
+    </div>
+  </header>
+
+  <main class="dash-body">
+    <div class="dash-hero">
+      <div>
+        <h1 class="dash-title">Fleet Reliability Overview</h1>
+        <p class="dash-subtitle">TAPAS-BH-201 MALE UAV — Rotax 914F Aero Engine Digital Twin</p>
+      </div>
+    </div>
+
+    <div class="stat-grid" id="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Missions Logged</div>
+        <div class="stat-value" id="stat-missions">—</div>
+        <div class="stat-sub">Persisted to Postgres</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Telemetry Hours</div>
+        <div class="stat-value" id="stat-hours">—</div>
+        <div class="stat-sub" id="stat-hours-sub">@ 10 Hz</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Critical Events</div>
+        <div class="stat-value accent-red" id="stat-critical">—</div>
+        <div class="stat-sub">Across all missions</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Classifier Ensemble Acc.</div>
+        <div class="stat-value accent-amber" id="stat-clf-acc">—</div>
+        <div class="stat-sub" id="stat-clf-sub">Independently re-verified</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">PINN RUL MAE</div>
+        <div class="stat-value" id="stat-pinn-mae">—</div>
+        <div class="stat-sub">cycles</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">DRL Avg. Endurance Gain</div>
+        <div class="stat-value accent-emerald" id="stat-drl">—</div>
+        <div class="stat-sub">cycles extended</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-heading">
+        <span>Recent Missions</span>
+        <span id="mission-count-badge" style="font-size:10px; color:var(--text-muted);">—</span>
+      </div>
+      <div id="missions-table-wrap">
+        <div class="empty-state">Loading…</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-heading"><span>About This Build</span></div>
+      <p style="font-size:12px; color:var(--text-secondary); line-height:1.7; margin:0;">
+        PRAHARI wraps the SIH26054 agentic PINN/DRL/LangGraph pipeline in a defense-grade
+        layered architecture (sensor fusion, ensemble voting, HMAC packet integrity, a
+        confidence-gated safe-mode fallback, and rolling trend/PHM risk scoring) with every
+        threshold and known limitation documented in
+        <code style="color:var(--accent-sky);">MODEL_CARD.md</code>. Every session run from the
+        Live Ops Console is persisted here as a Mission with its full fault-event timeline.
+      </p>
+    </div>
+  </main>
+
+  <script src="/static/dashboard.js?v=20260915_01"></script>
+</body>
+
+</html>
