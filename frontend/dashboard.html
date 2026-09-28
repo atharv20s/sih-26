@@ -248,6 +248,7 @@
     </div>
     <div class="dash-navbar-right">
       <span class="user-pill" id="user-email">—</span>
+      <a href="/mission-map" class="btn">MISSION MAP</a>
       <a href="/app" class="btn btn-primary">LAUNCH LIVE OPS CONSOLE →</a>
       <button class="btn" id="logout-btn">LOG OUT</button>
     </div>
@@ -314,6 +315,29 @@
         <code style="color:var(--accent-sky);">MODEL_CARD.md</code>. Every session run from the
         Live Ops Console is persisted here as a Mission with its full fault-event timeline.
       </p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-heading"><span>Why PRAHARI</span></div>
+      <p style="font-size:11px; color:var(--text-muted); margin:0 0 14px 0; line-height:1.6;">
+        General capability framing vs. a typical statistical-only predictive-maintenance approach
+        (LSTM/1D-CNN/XGBoost on raw sensor streams) — not a comparison against any specific team's
+        submission, since none is available to this build.
+      </p>
+      <table>
+        <thead>
+          <tr><th>Capability</th><th>Statistical-only ML</th><th>PRAHARI</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Physical plausibility</td><td>None — can predict unphysical states</td><td>Fourier-law PINN residual gates every RUL estimate</td></tr>
+          <tr><td>Sensor fault tolerance</td><td>NaN/dropout often crashes or silently corrupts</td><td>Auto-imputation + confidence-weighted physics fusion</td></tr>
+          <tr><td>Model trust</td><td>Single model, single point of failure</td><td>3-member ensemble vote with a measured agreement score</td></tr>
+          <tr><td>Autonomous action safety</td><td>Unconstrained DRL exploration</td><td>Confidence-gated safe-mode fallback to human operator</td></tr>
+          <tr><td>Data integrity in transit</td><td>Plain telemetry, no verification</td><td>HMAC-signed, freshness-checked packets</td></tr>
+          <tr><td>Degradation detection</td><td>Instant-threshold only</td><td>Rolling multi-channel trend/PHM risk score</td></tr>
+          <tr><td>Transparency</td><td>Rarely documented</td><td>Every threshold + known limitation in <code style="color:var(--accent-sky);">MODEL_CARD.md</code>, honestly reported (including where our own classifier underperforms)</td></tr>
+        </tbody>
+      </table>
     </div>
   </main>
 

@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, ForeignKey, Text, Float, Boolean
+from sqlalchemy import String, DateTime, ForeignKey, Text, Float, Boolean, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .session import Base
@@ -68,3 +68,19 @@ class FaultEvent(Base):
     detail: Mapped[str] = mapped_column(Text, default="")
 
     mission: Mapped["Mission"] = relationship(back_populates="events")
+
+
+class AuditChainEntry(Base):
+    """Hash-chained audit log entry — see src/agent/audit_chain.py for the
+    real guarantee this provides (tamper-evidence via hash linkage) versus
+    what it deliberately does not claim (a distributed blockchain)."""
+
+    __tablename__ = "audit_chain_entries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    seq: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    prev_hash: Mapped[str] = mapped_column(String(64))
+    entry_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String(64))
+    payload_json: Mapped[str] = mapped_column(Text)
+    timestamp: Mapped[float] = mapped_column(Float)

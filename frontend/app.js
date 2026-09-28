@@ -867,6 +867,152 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // -------------------------------------------------------------------------
+  // AI Diagnostic Router — ground-station-triggered on-demand deep-dive.
+  // Routes through the intent-conditional LangGraph StateGraph
+  // (src/agent/orchestrator.py::run_diagnostic), distinct from the
+  // continuous 10 Hz graph that's already driving every other panel.
+  // -------------------------------------------------------------------------
+  const diagResultEl = document.getElementById('diag-result');
+  const diagBranchEl = document.getElementById('diag-branch');
+  const diagSummaryEl = document.getElementById('diag-summary');
+  const diagGateEl = document.getElementById('diag-gate');
+  const diagHashEl = document.getElementById('diag-hash');
+
+  async function runDiagnostic(intent, btn) {
+    const allDiagBtns = [
+      document.getElementById('btn-diag-sensor'),
+      document.getElementById('btn-diag-thermal'),
+      document.getElementById('btn-diag-rootcause'),
+    ];
+    allDiagBtns.forEach((b) => { if (b) b.disabled = true; });
+    const originalText = btn ? btn.textContent : null;
+    if (btn) btn.textContent = '⏳ RUNNING…';
+
+    try {
+      const res = await fetch('/api/agent/diagnose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ intent }),
+      });
+      if (res.status === 401) { window.location.href = '/login'; return; }
+      const data = await res.json();
+      const report = data.report || {};
+      const gate = report.gate || {};
+
+      diagResultEl.style.display = 'block';
+      diagBranchEl.textContent = report.branch || intent;
+      diagSummaryEl.textContent = `RESULT: ${String(report.summary || '—').toUpperCase()}`;
+      diagGateEl.textContent = gate.verdict ? `GATE: ${gate.verdict} → ${gate.action}` : '';
+      diagGateEl.style.color = gate.verdict && gate.verdict.includes('EXCEED') || gate.verdict === 'HALLUCINATION_FLAGGED'
+        ? '#f85149' : '#3fb950';
+      const entry = data.audit_entry || {};
+      diagHashEl.textContent = entry.entry_hash
+        ? `AUDIT CHAIN #${entry.seq} · ${entry.entry_hash.slice(0, 16)}…`
+        : '';
+    } catch (err) {
+      console.error('[AI Diagnostic Router] request failed', err);
+      diagResultEl.style.display = 'block';
+      diagBranchEl.textContent = 'ERROR';
+      diagSummaryEl.textContent = 'Diagnostic request failed — check connection.';
+      diagGateEl.textContent = '';
+      diagHashEl.textContent = '';
+    } finally {
+      allDiagBtns.forEach((b) => { if (b) b.disabled = false; });
+      if (btn && originalText) btn.textContent = originalText;
+    }
+  }
+
+  const diagSensorBtn = document.getElementById('btn-diag-sensor');
+  const diagThermalBtn = document.getElementById('btn-diag-thermal');
+  const diagRootCauseBtn = document.getElementById('btn-diag-rootcause');
+  if (diagSensorBtn) diagSensorBtn.addEventListener('click', () => runDiagnostic('sensor_integrity_check', diagSensorBtn));
+  if (diagThermalBtn) diagThermalBtn.addEventListener('click', () => runDiagnostic('thermal_stress_analysis', diagThermalBtn));
+  if (diagRootCauseBtn) diagRootCauseBtn.addEventListener('click', () => runDiagnostic('root_cause_diagnostic', diagRootCauseBtn));
+
+  // -------------------------------------------------------------------------
+  // AI Advisor (GLM) — LLM orchestrator-control layer. Reads the live
+  // defense-layer state via /api/agent/advise and can itself trigger one of
+  // the diagnostic branches above. Hard rate-limited server-side.
+  // -------------------------------------------------------------------------
+  const advisorBtn = document.getElementById('btn-ai-advise');
+  const advisorQuotaBadge = document.getElementById('advisor-quota-badge');
+  const advisorResultEl = document.getElementById('advisor-result');
+  const advisorSynthesisEl = document.getElementById('advisor-synthesis');
+  const advisorRecommendationEl = document.getElementById('advisor-recommendation');
+  const advisorTriggeredEl = document.getElementById('advisor-triggered');
+  const advisorHashEl = document.getElementById('advisor-hash');
+
+  const advisorPanel = advisorBtn ? advisorBtn.closest('.hud-panel') : null;
+
+  // Demo-safety: if GLM isn't configured (or the status check can't reach
+  // the server at all — e.g. a dropped connection mid-demo), hide the whole
+  // panel instead of leaving a broken-looking button on screen.
+  async function refreshAdvisorQuota() {
+    try {
+      const res = await fetch('/api/agent/advise/status', { credentials: 'include' });
+      if (!res.ok) { if (advisorPanel) advisorPanel.style.display = 'none'; return; }
+      const data = await res.json();
+      if (data.configured === false) {
+        if (advisorPanel) advisorPanel.style.display = 'none';
+        return;
+      }
+      if (advisorPanel) advisorPanel.style.display = '';
+      if (advisorQuotaBadge) advisorQuotaBadge.textContent = `${data.remaining} / ${data.limit}`;
+      if (advisorBtn) advisorBtn.disabled = data.remaining <= 0;
+    } catch (err) {
+      if (advisorPanel) advisorPanel.style.display = 'none';
+    }
+  }
+  refreshAdvisorQuota();
+  setInterval(refreshAdvisorQuota, 30000);
+
+  if (advisorBtn) {
+    advisorBtn.addEventListener('click', async () => {
+      advisorBtn.disabled = true;
+      const originalText = advisorBtn.textContent;
+      advisorBtn.textContent = '⏳ THINKING…';
+
+      try {
+        const res = await fetch('/api/agent/advise', { method: 'POST', credentials: 'include' });
+        if (res.status === 401) { window.location.href = '/login'; return; }
+        if (res.status === 429) {
+          const err = await res.json().catch(() => ({}));
+          advisorResultEl.style.display = 'block';
+          advisorSynthesisEl.textContent = err.detail || 'Rate limit reached.';
+          advisorRecommendationEl.textContent = '';
+          advisorTriggeredEl.textContent = '';
+          advisorHashEl.textContent = '';
+          return;
+        }
+        const data = await res.json();
+        advisorResultEl.style.display = 'block';
+        advisorSynthesisEl.textContent = data.synthesis || '—';
+        advisorRecommendationEl.textContent = data.recommended_intent && data.recommended_intent !== 'none'
+          ? `→ RECOMMENDS: ${data.recommended_intent.toUpperCase().replace(/_/g, ' ')}`
+          : '→ NO FURTHER DIAGNOSTIC RECOMMENDED';
+        advisorTriggeredEl.textContent = data.triggered_diagnostic
+          ? `✓ AUTO-TRIGGERED: ${data.triggered_diagnostic.branch} — ${String(data.triggered_diagnostic.summary || '').toUpperCase()}`
+          : '';
+        const entry = data.audit_entry || {};
+        advisorHashEl.textContent = entry.entry_hash
+          ? `AUDIT CHAIN #${entry.seq} · ${entry.entry_hash.slice(0, 16)}…`
+          : '';
+        if (data.rate_limit && advisorQuotaBadge) {
+          advisorQuotaBadge.textContent = `${data.rate_limit.remaining} / ${data.rate_limit.limit}`;
+        }
+      } catch (err) {
+        console.error('[AI Advisor] request failed', err);
+        advisorResultEl.style.display = 'block';
+        advisorSynthesisEl.textContent = 'Advisor request failed — check connection.';
+      } finally {
+        advisorBtn.textContent = originalText;
+        refreshAdvisorQuota();
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // 13. Benchmarks Modal
   // -------------------------------------------------------------------------
   const btnBenchmarks = document.getElementById('btn-benchmarks');

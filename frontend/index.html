@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PRAHARI — Live Ops Console (SIH26054)</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910_01">
+  <link rel="stylesheet" href="/static/styles.css?v=20260916_01">
   <!-- Three.js and OrbitControls from CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -408,6 +408,9 @@
           <div class="pinn-shield-badge" id="drl-shield-badge" style="display: none;">
             <span>⚠️ PINN SAFETY SHIELD ENGAGED</span>
           </div>
+          <div style="font-size:9px; color:#6b7785; margin-top:6px;" title="Dispatch writes directly to the in-process simulation state — no real flight-control protocol is implemented.">
+            ⤷ SIMULATED AUTOPILOT UPLINK (STANAG 4586-style de-rate dispatch)
+          </div>
         </div>
       </div>
 
@@ -426,6 +429,48 @@
           <div id="defense-integrity" style="color:#c8d1dc; font-family:'JetBrains Mono',monospace; text-align:right;">—</div>
           <div style="color:#6b7785;">TREND / PHM RISK</div>
           <div id="defense-trend-risk" style="color:#c8d1dc; font-family:'JetBrains Mono',monospace; text-align:right;">—</div>
+        </div>
+      </div>
+
+      <!-- AI Diagnostic Router — ground-station-triggered on-demand deep-dive,
+           routed through the intent-conditional StateGraph (distinct from the
+           continuous 10 Hz graph). See src/agent/orchestrator.py::run_diagnostic. -->
+      <div class="hud-panel">
+        <div class="panel-title">
+          <span>AI Diagnostic Router</span>
+          <span class="panel-badge">GROUND CTRL</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:6px; padding:2px 2px 8px;">
+          <button class="pc-btn" id="btn-diag-sensor" style="text-align:left; font-size:10px;">⚙ SENSOR INTEGRITY CHECK</button>
+          <button class="pc-btn" id="btn-diag-thermal" style="text-align:left; font-size:10px;">🌡 THERMAL STRESS ANALYSIS</button>
+          <button class="pc-btn" id="btn-diag-rootcause" style="text-align:left; font-size:10px;">🔍 ROOT CAUSE DIAGNOSTIC</button>
+        </div>
+        <div id="diag-result" style="font-size:10px; color:#8b949e; padding:6px 2px; line-height:1.6; border-top:1px solid #1e2733; margin-top:2px; display:none;">
+          <div id="diag-branch" style="color:#58a6ff; font-weight:700; margin-bottom:4px;"></div>
+          <div id="diag-summary" style="color:#c8d1dc; margin-bottom:4px;"></div>
+          <div id="diag-gate" style="margin-bottom:4px;"></div>
+          <div id="diag-hash" style="color:#6b7785; font-family:'JetBrains Mono',monospace; font-size:9px;"></div>
+        </div>
+      </div>
+
+      <!-- LLM Orchestrator-Control Advisor (GLM) — reads the live defense-layer
+           state and can itself trigger a diagnostic branch above. Hard
+           rate-limited server-side; see src/agent/llm_advisor.py. -->
+      <div class="hud-panel">
+        <div class="panel-title">
+          <span>AI Advisor (GLM)</span>
+          <span class="panel-badge" id="advisor-quota-badge">— / —</span>
+        </div>
+        <button class="pc-btn active" id="btn-ai-advise" style="width:100%; text-align:left; font-size:10px;">🧠 ASK AI ADVISOR</button>
+        <p style="font-size:9px; color:#6b7785; margin:6px 2px 0;">
+          Reasons only from real computed values above (ensemble agreement, PINN residual, trend risk) — never
+          invents readings. Rate-limited; does not change the classifier's trained accuracy.
+        </p>
+        <div id="advisor-result" style="font-size:10px; color:#8b949e; padding:6px 2px; line-height:1.6; border-top:1px solid #1e2733; margin-top:6px; display:none;">
+          <div id="advisor-synthesis" style="color:#c8d1dc; margin-bottom:6px;"></div>
+          <div id="advisor-recommendation" style="color:#58a6ff; font-weight:700; margin-bottom:4px;"></div>
+          <div id="advisor-triggered" style="color:#3fb950; margin-bottom:4px;"></div>
+          <div id="advisor-hash" style="color:#6b7785; font-family:'JetBrains Mono',monospace; font-size:9px;"></div>
         </div>
       </div>
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +18,7 @@ from typing import Dict, Any, Optional
 
 import numpy as np
 import torch
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,7 +36,7 @@ from sqlalchemy.orm import Session
 from auth.routes import router as auth_router, get_current_user
 from auth.security import COOKIE_NAME, decode_session_token
 from db.models import User, Mission, FaultEvent
-from db.session import get_session, get_sessionmaker
+from db.session import get_session, get_sessionmaker, backend_status as get_db_backend_status
 
 app = FastAPI(title="PRAHARI — SIH26054 MALE UAV Engine Digital Twin Server", version="1.0.0")
 app.include_router(auth_router)
@@ -486,6 +487,8 @@ async def get_system_status():
             "active_fault": sim.injected_fault,
         },
         "self_correction_count": getattr(orchestrator, "_correction_count", 0),
+        "database": get_db_backend_status(),
+        "glm_advisor_configured": bool(os.environ.get("GLM_API_KEY")),
     }
 
 
@@ -580,6 +583,7 @@ from auth.routes import require_user  # noqa: E402  (after app/router setup abov
 
 
 _ensemble_acc_cache: Optional[float] = None
+_last_dispatch_payload: Optional[Dict[str, Any]] = None  # latest live state, for the LLM advisor endpoint
 
 
 @app.get("/api/dashboard/summary")
@@ -642,6 +646,116 @@ async def dashboard_missions(limit: int = 25, user: User = Depends(require_user)
             "event_count": len(m.events),
         })
     return out
+
+
+class DiagnoseRequest(BaseModel):
+    intent: str  # one of: sensor_integrity_check, thermal_stress_analysis, root_cause_diagnostic
+
+
+_VALID_INTENTS = {"sensor_integrity_check", "thermal_stress_analysis", "root_cause_diagnostic"}
+
+
+@app.post("/api/agent/diagnose")
+async def agent_diagnose(req: DiagnoseRequest, user: User = Depends(require_user), db: Session = Depends(get_session)):
+    """Ground-station-triggered on-demand diagnostic — routes through the
+    intent-conditional StateGraph (src/agent/orchestrator.py::run_diagnostic),
+    distinct from the continuous 10 Hz graph. Runs off the event loop since
+    it's synchronous torch/numpy work; appends a hash-chained audit entry
+    (src/agent/audit_chain.py) rather than blocking on the same DB call the
+    telemetry loop uses.
+    """
+    if req.intent not in _VALID_INTENTS:
+        raise HTTPException(status_code=400, detail=f"intent must be one of {sorted(_VALID_INTENTS)}")
+
+    buffer = getattr(orchestrator, "_buffer", [])
+    raw_frame = buffer[-1] if buffer else {}
+
+    report = await asyncio.to_thread(orchestrator.run_diagnostic, req.intent, raw_frame, sim.cycle)
+
+    from agent.audit_chain import append_audit_entry
+    entry = await asyncio.to_thread(append_audit_entry, db, f"diagnostic:{req.intent}", report)
+
+    return {
+        "report": report,
+        "audit_entry": {"seq": entry.seq, "entry_hash": entry.entry_hash, "prev_hash": entry.prev_hash},
+    }
+
+
+@app.get("/api/agent/advise/status")
+async def agent_advise_status(user: User = Depends(require_user)):
+    """Remaining GLM call quota — polled by the UI to show/hide the button
+    before the operator wastes a click on an already-exhausted window (or,
+    for demo-safety, before wasting a click when GLM isn't configured at all)."""
+    from agent.llm_advisor import rate_limit_status
+    status = rate_limit_status()
+    status["configured"] = bool(os.environ.get("GLM_API_KEY"))
+    return status
+
+
+@app.post("/api/agent/advise")
+async def agent_advise(user: User = Depends(require_user), db: Session = Depends(get_session)):
+    """LLM orchestrator-control layer (GLM) — reads the current live
+    defense-layer state and can itself trigger one of the intent-routed
+    diagnostic branches. Hard rate-limited (src/agent/llm_advisor.py) per
+    explicit requirement. Does NOT change the fault classifier's trained
+    accuracy — see src/agent/llm_advisor.py's module docstring and
+    MODEL_CARD.md for why that's a separate, already-tracked concern.
+    """
+    from agent.llm_advisor import advise, rate_limit_status
+
+    global _last_dispatch_payload
+    if _last_dispatch_payload is None:
+        raise HTTPException(status_code=503, detail="No live telemetry yet — open the Live Ops Console first.")
+
+    # Only pass the fields the advisor actually needs — keeps the prompt
+    # small (cost) and avoids leaking anything irrelevant.
+    snapshot = {
+        "fault_archetype": _last_dispatch_payload.get("fault_archetype"),
+        "fault_confidence": _last_dispatch_payload.get("fault_confidence"),
+        "fault_agreement_score": _last_dispatch_payload.get("fault_agreement_score"),
+        "action_mode": (_last_dispatch_payload.get("drl_action") or {}).get("action_mode"),
+        "shield_applied": (_last_dispatch_payload.get("drl_action") or {}).get("shield_applied"),
+        "sensor_audit_passed": (_last_dispatch_payload.get("sensor_audit") or {}).get("passed"),
+        "corrupted_fields": (_last_dispatch_payload.get("sensor_audit") or {}).get("corrupted_fields"),
+        "physical_gradient": _last_dispatch_payload.get("physical_gradient"),
+        "fourier_residual": _last_dispatch_payload.get("fourier_residual"),
+        "is_physically_valid": _last_dispatch_payload.get("is_physically_valid"),
+        "trend_risk_score": _last_dispatch_payload.get("trend_risk_score"),
+        "mission_status": _last_dispatch_payload.get("mission_status"),
+        "component_health": _last_dispatch_payload.get("component_health"),
+    }
+
+    try:
+        result = await asyncio.to_thread(advise, snapshot)
+    except RuntimeError as e:
+        if str(e) == "rate_limited":
+            status = rate_limit_status()
+            raise HTTPException(status_code=429, detail=f"GLM advisor rate limit reached — resets in {status['reset_in_seconds']:.0f}s")
+        raise HTTPException(status_code=502, detail=f"GLM advisor error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"GLM advisor error: {e}")
+
+    from agent.audit_chain import append_audit_entry
+    audit_payload = {**result, "state_snapshot": snapshot}
+
+    triggered_report = None
+    if result["recommended_intent"] != "none":
+        buffer = getattr(orchestrator, "_buffer", [])
+        raw_frame = buffer[-1] if buffer else {}
+        triggered_report = await asyncio.to_thread(orchestrator.run_diagnostic, result["recommended_intent"], raw_frame, sim.cycle)
+        audit_payload["triggered_diagnostic"] = triggered_report
+        entry = await asyncio.to_thread(append_audit_entry, db, f"llm_orchestrated:{result['recommended_intent']}", audit_payload)
+    else:
+        entry = await asyncio.to_thread(append_audit_entry, db, "llm_advisory:none", audit_payload)
+
+    return {
+        "synthesis": result["synthesis"],
+        "recommended_intent": result["recommended_intent"],
+        "reasoning": result["reasoning"],
+        "triggered_diagnostic": triggered_report,
+        "audit_entry": {"seq": entry.seq, "entry_hash": entry.entry_hash, "prev_hash": entry.prev_hash},
+        "rate_limit": rate_limit_status(),
+    }
 
 
 @app.post("/api/simulate/inject")
@@ -769,9 +883,18 @@ async def telemetry_websocket(websocket: WebSocket):
             # 2. Process through LangGraph Agentic Loop (Auditor -> PINN -> Classifier -> DRL -> Dispatch)
             dispatch = orchestrator.process_telemetry_frame(raw_frame, cycle=sim.cycle)
             dispatch["active_injected_fault"] = sim.injected_fault
+            global _last_dispatch_payload
+            _last_dispatch_payload = dispatch
 
-            # 3. Apply DRL policy feedback to simulator if shield or action active
+            # 3. SIMULATED AUTOPILOT UPLINK — apply DRL policy feedback to the
+            #    simulator if shield/action active. This is the closed-loop
+            #    de-rate dispatch a real system would send over a STANAG
+            #    4586-style control link to the airframe's autopilot; here it
+            #    writes directly to the in-process simulation state. No real
+            #    flight-control protocol is implemented — labelled honestly
+            #    (dispatch["autopilot_uplink"] below) rather than claimed.
             drl_act = dispatch.get("drl_action", {})
+            dispatch["autopilot_uplink"] = {"simulated": True, "protocol_note": "STANAG 4586-style closed-loop de-rate dispatch (simulated, not a real flight-control link)"}
             if drl_act.get("shield_applied", False):
                 sim.throttle = float(np.clip(sim.throttle + drl_act.get("delta_throttle", 0.0), 0.50, 0.90))
                 sim.mixture = float(np.clip(sim.mixture + drl_act.get("delta_mixture", 0.0) * 1.5, 12.0, 15.0))
@@ -859,6 +982,12 @@ if FRONTEND_DIR.exists():
         if not user:
             return RedirectResponse("/login")
         return _serve_page("index.html")
+
+    @app.get("/mission-map", response_class=HTMLResponse)
+    async def mission_map_page(user: Optional[User] = Depends(get_current_user)):
+        if not user:
+            return RedirectResponse("/login")
+        return _serve_page("mission-map.html")
 
     @app.get("/{file_name:path}")
     async def serve_static_root(file_name: str):

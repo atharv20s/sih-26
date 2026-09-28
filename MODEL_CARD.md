@@ -115,3 +115,66 @@ in `scripts/test_fault_injection.py`.
    inference buffer is too short), `pinn_results.fourier_law_adherence` is
    explicitly labeled `DEMO_FALLBACK` — never call the scripted Arrhenius
    approximation "physically validated by Fourier's law."
+
+## 6. Scope & Ethics — Mission Map content boundary
+
+The Mission Map (`/mission-map`) visualizes a UAV patrol trajectory, DRDO
+laboratory locations, ground-station markers, and a simulated
+sensor/EW-denial fault encounter, plus a Regional Globe view for geographic
+context. Deliberately **out of scope**, by design decision rather than
+oversight:
+
+- **No cross-border strike depiction.** SIH26054's problem statement is
+  aero-engine health monitoring and predictive maintenance — not weapons
+  targeting. Rendering realistic attacks against named neighboring countries
+  doesn't serve that problem statement and risks reading as inappropriate for
+  a student hackathon submission being judged by DRDO-adjacent evaluators.
+- **No missile-compatibility claims.** PRAHARI is a health/prognostics
+  digital twin for a MALE UAV's Rotax 914F piston engine; it makes no claims
+  about weapons payload integration of any kind.
+- **Neighboring-country markers are geographic reference only.** The Regional
+  Globe view labels a handful of neighboring capitals (Islamabad, Kathmandu,
+  Dhaka, Colombo, Naypyidaw, Lhasa) purely for spatial context — plain dots,
+  no connecting lines, no activity or status implied, the same treatment an
+  atlas gives any city label.
+- **All trajectory/attack/ground-station content is fictional**, explicitly
+  disclaimed in-page (`frontend/mission-map.html`) — only the India boundary
+  geodata and the DRDO laboratory city locations are real, public, sourced
+  data (see `scripts/build_india_map.py` and
+  `frontend/assets/mission_map_data.js`).
+
+This boundary was held across multiple follow-up requests during development
+to extend the map toward cross-border strike scenarios and missile
+compatibility — declined for the reasons above rather than silently
+implemented.
+
+## 7. Intent-Routed Diagnostic Agent & Hash-Chain Audit Log
+
+`src/agent/orchestrator.py::run_diagnostic()` is a **second**, separate
+LangGraph `StateGraph` from the continuous 10 Hz pipeline — it uses genuine
+conditional routing (`add_conditional_edges`/`set_conditional_entry_point`,
+which the continuous graph never needs) to dispatch one of three ground-
+station-triggered intents (`sensor_integrity_check`, `thermal_stress_analysis`,
+`root_cause_diagnostic`) to the matching existing tool nodes, gated by a
+physical-feasibility check (Fourier conservation-of-energy) or a safety-shield
+check (thermal/mechanical redline). It reuses the exact same node methods as
+the continuous graph — no duplicated math — and never runs per-frame; it's
+invoked on demand via `POST /api/agent/diagnose` from the Live Ops Console's
+"AI Diagnostic Router" panel.
+
+**Hash-chain audit log** (`src/agent/audit_chain.py`) — an honest substitute
+for a "blockchain node." Real guarantee: each entry's hash is computed over
+the previous entry's hash plus this entry's payload
+(`sha256(prev_hash + timestamp + kind + payload)`), so tampering with any
+past entry breaks every hash after it — the actual tamper-evidence property
+a blockchain provides, verifiable via `audit_chain.verify_chain()`. What it
+deliberately does **not** claim: distributed consensus, multiple independent
+nodes, or Byzantine fault tolerance. It's a single-database hash chain, not
+a blockchain.
+
+**Simulated autopilot uplink** — the DRL shield's `delta_throttle`/
+`delta_mixture` dispatch (`src/server/server.py`'s WS loop) writes directly
+to the in-process simulation state and is labeled in both the payload
+(`dispatch["autopilot_uplink"]`) and the UI as a simulated STANAG 4586-style
+closed-loop de-rate dispatch — no real flight-control protocol is
+implemented, and none is claimed.

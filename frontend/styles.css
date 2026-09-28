@@ -320,6 +320,7 @@ body::before {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  flex-shrink: 0;
   box-shadow: var(--shadow-lg);
   transition: border-color 0.2s ease;
 }
@@ -358,6 +359,7 @@ body::before {
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .gauge-grid {
@@ -768,6 +770,7 @@ body::before {
   flex-direction: column;
   gap: 7px;
   overflow-y: auto;
+  min-height: 0;
   scrollbar-width: thin;
   scrollbar-color: rgba(56, 189, 248, 0.2) transparent;
 }

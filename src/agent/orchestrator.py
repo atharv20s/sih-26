@@ -72,6 +72,12 @@ class AgentState(TypedDict):
     cycle: int
     self_correction_count: int
     status_message: str
+    # Intent-routed diagnostic graph only (see _build_diagnostic_graph) —
+    # unused by the continuous per-frame graph.
+    intent: str
+    feasibility_verdict: Dict[str, Any]
+    shield_verdict: Dict[str, Any]
+    diagnostic_report: Dict[str, Any]
 
 
 class DigitalTwinOrchestrator:
@@ -692,6 +698,180 @@ class DigitalTwinOrchestrator:
         }
 
         return {"dispatch_payload": dispatch_payload}
+
+    # ======================================================================= #
+    # Intent-Routed Diagnostic Graph                                          #
+    #                                                                         #
+    # A SECOND, separate StateGraph the ground station invokes on demand      #
+    # (via POST /api/agent/diagnose) — genuinely conditional routing via      #
+    # add_conditional_edges, unlike the continuous per-frame graph above      #
+    # which only ever runs its fixed linear sequence. Reuses the exact same   #
+    # node methods (sensor_auditor_node, pinn_engine_node, etc.) so there is  #
+    # no duplicated math — only the routing and the two gate nodes below are  #
+    # new. This graph does NOT run per-frame and does NOT touch the           #
+    # continuous graph's behavior.                                           #
+    # ======================================================================= #
+
+    def _route_by_intent(self, state: AgentState) -> str:
+        intent = state.get("intent", "root_cause_diagnostic")
+        if intent == "sensor_integrity_check":
+            return "sensor_auditor"
+        if intent == "thermal_stress_analysis":
+            return "pinn_engine"
+        return "fault_classifier"  # root_cause_diagnostic (default)
+
+    def physical_feasibility_node(self, state: AgentState) -> Dict[str, Any]:
+        """Diagram's 'Physically Feasible? Conservation of Energy Check' gate.
+
+        Both diamond outcomes (Yes/No) funnel into the same downstream
+        'Prune Prediction & Flag Transients' behavior in the original
+        diagram, so this is implemented as one node with an internal
+        verdict rather than a second graph fork — the verdict is still
+        logged distinctly for the ground station's reasoning-trace display.
+        """
+        pinn = state.get("pinn_results", {})
+        is_valid = pinn.get("is_physically_valid", True)
+        residual = pinn.get("physics_residual", 0.0)
+
+        if is_valid:
+            verdict = {
+                "gate": "physical_feasibility",
+                "verdict": "COMPLIANT",
+                "action": "PREDICTION_RETAINED",
+                "detail": f"Fourier conservation-of-energy check passed (residual={residual:.3f}). "
+                          f"RUL prediction retained: {pinn.get('predicted_rul')} cycles.",
+            }
+        else:
+            verdict = {
+                "gate": "physical_feasibility",
+                "verdict": "HALLUCINATION_FLAGGED",
+                "action": "PREDICTION_PRUNED",
+                "detail": f"Fourier conservation-of-energy check FAILED (residual={residual:.3f} exceeds "
+                          f"boundary). Prediction pruned and flagged as a transient — not dispatched as trusted RUL.",
+            }
+        return {"feasibility_verdict": verdict}
+
+    def safety_shield_node(self, state: AgentState) -> Dict[str, Any]:
+        """Diagram's 'PINN Safety Shield Check — Does action violate thermal
+        limits?' gate. Same funnel-together pattern as physical_feasibility_node."""
+        drl = state.get("drl_results", {})
+        shield_applied = drl.get("shield_applied", False)
+
+        if shield_applied:
+            verdict = {
+                "gate": "safety_shield",
+                "verdict": "REDLINE_EXCEEDED",
+                "action": "CLAMPED_TO_SAFE_CORRIDOR",
+                "detail": drl.get("warning_flag") or "Recommended action exceeded a thermal/mechanical "
+                          "boundary — clamped to the safe corridor before being offered as a recommendation.",
+            }
+        else:
+            verdict = {
+                "gate": "safety_shield",
+                "verdict": "WITHIN_SAFE_BOUNDARY",
+                "action": "RECOMMENDATION_PASSED_THROUGH",
+                "detail": "Recommended throttle/mixture trim stayed within the safe operating corridor — "
+                          "no clamping needed.",
+            }
+        return {"shield_verdict": verdict}
+
+    def state_verification_node(self, state: AgentState) -> Dict[str, Any]:
+        """Diagram's 'Return to Orchestrator State — State verification &
+        token lock'. Converges all three branches, assembles the reasoning
+        trace the ground station displays, and appends the hash-chain audit
+        entry (honest substitute for the diagram's Hyperledger node — see
+        src/agent/audit_chain.py)."""
+        intent = state.get("intent", "")
+        report: Dict[str, Any] = {"intent": intent, "timestamp": time.time()}
+
+        if intent == "sensor_integrity_check":
+            audit = state.get("audit_results", {})
+            report["branch"] = "Tool 3: Sensor Auditor"
+            report["summary"] = (
+                f"{len(audit.get('corrupted_fields', []))} field(s) flagged corrupt and "
+                f"self-healed via imputation." if audit.get("corrupted_fields")
+                else "All sensor channels nominal — no imputation required."
+            )
+            report["detail"] = audit
+        elif intent == "thermal_stress_analysis":
+            report["branch"] = "Tool 1: PINN Physics Guardian"
+            report["summary"] = state.get("pinn_results", {}).get("fourier_law_adherence", "UNKNOWN")
+            report["detail"] = state.get("pinn_results", {})
+            report["gate"] = state.get("feasibility_verdict", {})
+        else:
+            report["branch"] = "Tool 2 + 4-Class Fault Classifier: Root Cause Diagnostic"
+            report["summary"] = state.get("fault_results", {}).get("predicted_fault", "nominal")
+            report["detail"] = {"fault": state.get("fault_results", {}), "drl": state.get("drl_results", {})}
+            report["gate"] = state.get("shield_verdict", {})
+
+        return {"diagnostic_report": report}
+
+    def _build_diagnostic_graph(self):
+        workflow = StateGraph(AgentState)
+
+        workflow.add_node("sensor_auditor", self.sensor_auditor_node)
+        workflow.add_node("pinn_engine", self.pinn_engine_node)
+        workflow.add_node("physical_feasibility", self.physical_feasibility_node)
+        workflow.add_node("fault_classifier", self.fault_classifier_node)
+        workflow.add_node("drl_prognostics", self.drl_prognostics_node)
+        workflow.add_node("safety_shield", self.safety_shield_node)
+        workflow.add_node("state_verification", self.state_verification_node)
+
+        # The Router: genuine conditional fork on classified/requested intent.
+        workflow.set_conditional_entry_point(
+            self._route_by_intent,
+            {
+                "sensor_auditor": "sensor_auditor",
+                "pinn_engine": "pinn_engine",
+                "fault_classifier": "fault_classifier",
+            },
+        )
+
+        # Branch A: sensor_integrity_check
+        workflow.add_edge("sensor_auditor", "state_verification")
+
+        # Branch B: thermal_stress_analysis
+        workflow.add_edge("pinn_engine", "physical_feasibility")
+        workflow.add_edge("physical_feasibility", "state_verification")
+
+        # Branch C: root_cause_diagnostic
+        workflow.add_edge("fault_classifier", "drl_prognostics")
+        workflow.add_edge("drl_prognostics", "safety_shield")
+        workflow.add_edge("safety_shield", "state_verification")
+
+        workflow.add_edge("state_verification", END)
+
+        return workflow.compile()
+
+    def run_diagnostic(self, intent: str, raw_frame: Dict[str, Any],
+                        cycle: int = 0) -> Dict[str, Any]:
+        """Ground-station-triggered on-demand deep-dive — uses the SAME live
+        window_buffer the continuous graph has been building, so the
+        diagnostic reflects real current telemetry, not a cold start."""
+        if not hasattr(self, "_diagnostic_graph"):
+            self._diagnostic_graph = self._build_diagnostic_graph()
+
+        init_state: AgentState = {
+            "raw_telemetry": raw_frame,
+            "window_buffer": getattr(self, "_buffer", []),
+            "audit_results": {},
+            "audited_telemetry": {},
+            "fused_telemetry": {},
+            "fusion_meta": {},
+            "pinn_results": {},
+            "fault_results": {},
+            "drl_results": {},
+            "dispatch_payload": {},
+            "cycle": cycle,
+            "self_correction_count": getattr(self, "_correction_count", 0),
+            "status_message": "",
+            "intent": intent,
+            "feasibility_verdict": {},
+            "shield_verdict": {},
+            "diagnostic_report": {},
+        }
+        result = self._diagnostic_graph.invoke(init_state)
+        return result.get("diagnostic_report", {})
 
     # --------------------------------------------------------------------- #
     # Build LangGraph Pipeline                                              #

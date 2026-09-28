@@ -24,3 +24,9 @@ Claude outputs/
 
 # Secrets — Neon Postgres connection string, JWT signing secret
 .env
+
+# Local SQLite fallback DB (demo-safety offline fallback — see src/db/session.py)
+prahari_fallback.db
+
+# Bootstrap script's local virtualenv
+.venv/

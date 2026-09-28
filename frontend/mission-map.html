@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRAHARI — Mission Map</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260915_05">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background: var(--bg-primary);
+      font-family: var(--font-sans);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    .mm-navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-card);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .mm-brand { display: flex; align-items: center; gap: 12px; }
+
+    .brand-glyph {
+      width: 34px; height: 34px; border-radius: 7px;
+      background: linear-gradient(135deg, var(--accent-sky), var(--accent-cyan));
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-display); font-weight: 700; font-size: 15px; color: #041019;
+    }
+
+    .mm-brand-name { font-family: var(--font-display); font-size: 19px; font-weight: 700; letter-spacing: 0.4px; }
+    .mm-brand-sub { font-size: 10px; color: var(--text-muted); letter-spacing: 0.5px; text-transform: uppercase; }
+
+    .mm-nav-links { display: flex; align-items: center; gap: 10px; }
+
+    .btn {
+      font-family: var(--font-sans); font-size: 12px; font-weight: 600; letter-spacing: 0.3px;
+      border-radius: var(--radius-sm); padding: 9px 16px; cursor: pointer;
+      border: 1px solid var(--border-card); background: transparent; color: var(--text-secondary);
+      transition: all 0.15s ease; text-decoration: none; display: inline-block;
+    }
+    .btn:hover { border-color: var(--accent-sky); color: var(--text-primary); }
+    .btn-primary { background: linear-gradient(135deg, var(--accent-sky), var(--accent-blue)); color: #fff; border: none; }
+    .btn-primary:hover { opacity: 0.9; color: #fff; }
+    .btn-danger { border-color: rgba(239,68,68,0.4); color: var(--accent-rose); }
+    .btn-danger:hover { border-color: var(--accent-rose); background: rgba(239,68,68,0.08); }
+    .btn-danger.active { background: var(--accent-rose); color: #fff; }
+
+    /* Default browser focus rings made a just-clicked button look like a
+       second "selected" one alongside the real .active state — replace with
+       a deliberate, subtle focus style that can't be confused with it. */
+    .btn:focus { outline: none; }
+    .btn:focus-visible { outline: 2px solid var(--accent-sky); outline-offset: 1px; }
+
+    .live-monitor-strip {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+      background: var(--bg-card); border: 1px solid var(--border-card); border-radius: var(--radius-sm);
+      padding: 8px 14px; margin-bottom: 18px; font-size: 11px; font-family: var(--font-mono);
+      color: var(--text-secondary);
+    }
+    .lm-item strong { color: var(--text-primary); }
+    .lm-sep { color: var(--text-muted); }
+    .lm-dot {
+      display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text-muted); margin-right: 5px;
+    }
+    .lm-dot.live { background: var(--accent-emerald); box-shadow: 0 0 6px var(--accent-emerald); }
+
+    .mm-body { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+
+    .mm-title { font-family: var(--font-display); font-size: 20px; font-weight: 700; margin: 0 0 4px 0; }
+    .mm-subtitle { color: var(--text-muted); font-size: 12px; margin: 0 0 18px 0; }
+    .mm-disclaimer {
+      font-size: 10.5px; color: var(--text-muted); background: rgba(56,189,248,0.06);
+      border: 1px solid var(--border-card); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 18px;
+    }
+
+    .mm-grid { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
+    @media (max-width: 900px) { .mm-grid { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--bg-card); backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--border-card); border-radius: var(--radius-md);
+      padding: 16px; margin-bottom: 18px;
+    }
+
+    .panel-heading {
+      font-family: var(--font-display); font-size: 13px; font-weight: 600;
+      margin: 0 0 12px 0; display: flex; align-items: center; justify-content: space-between;
+    }
+
+    #map-svg-wrap { position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: 640px; }
+    #map-svg { width: 100%; height: 100%; }
+
+    .legend-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; }
+    .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+    .detail-card { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+    .detail-card .dc-title { color: var(--text-primary); font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+    .detail-card .dc-empty { color: var(--text-muted); font-style: italic; }
+
+    #flight-profile-3d { width: 100%; height: 280px; border-radius: var(--radius-sm); overflow: hidden; }
+
+    .threat-banner {
+      display: none; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 14px;
+      background: rgba(239,68,68,0.12); border: 1px solid var(--accent-rose); border-radius: var(--radius-sm);
+      color: var(--accent-rose); font-size: 12px; font-weight: 600; letter-spacing: 0.3px;
+    }
+    .threat-banner.active { display: flex; animation: threatPulse 1.2s infinite; }
+    @keyframes threatPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+  </style>
+</head>
+
+<body>
+  <header class="mm-navbar">
+    <div class="mm-brand">
+      <div class="brand-glyph">P</div>
+      <div>
+        <div class="mm-brand-name">PRAHARI</div>
+        <div class="mm-brand-sub">Mission Map</div>
+      </div>
+    </div>
+    <div class="mm-nav-links">
+      <a href="/dashboard" class="btn">← DASHBOARD</a>
+      <a href="/app" class="btn btn-primary">LIVE OPS CONSOLE →</a>
+    </div>
+  </header>
+
+  <main class="mm-body">
+    <h1 class="mm-title">Mission Trajectory &amp; Ground Network</h1>
+    <p class="mm-subtitle">TAPAS-BH-201 patrol loop — simulated for demonstration</p>
+    <div class="mm-disclaimer">
+      ⚠️ DRDO laboratory markers are real, public, city-level locations (illustrative — not precise operational
+      coordinates). The ground stations, patrol trajectory, and threat encounter below are entirely
+      <strong>fictional</strong>, built for this hackathon demo — not real mission data.
+    </div>
+
+    <div id="threat-banner" class="threat-banner">
+      ⚠ <span id="threat-banner-text">SIMULATED THREAT ENCOUNTER ACTIVE</span>
+    </div>
+
+    <div id="live-monitor-strip" class="live-monitor-strip">
+      <span class="lm-item"><span id="lm-ws-dot" class="lm-dot"></span><span id="lm-ws-label">CONNECTING…</span></span>
+      <span class="lm-sep">·</span>
+      <span class="lm-item">FAULT: <strong id="lm-fault">—</strong></span>
+      <span class="lm-sep">·</span>
+      <span class="lm-item">MODE: <strong id="lm-mode">—</strong></span>
+      <span class="lm-sep">·</span>
+      <span class="lm-item">AGREEMENT: <strong id="lm-agreement">—</strong></span>
+      <span class="lm-sep">·</span>
+      <span class="lm-item">TREND RISK: <strong id="lm-trend">—</strong></span>
+    </div>
+
+    <div class="mm-grid">
+      <div class="panel">
+        <div class="panel-heading">
+          <span>India — Mission Trajectory</span>
+          <span id="mission-clock" style="font-family:var(--font-mono); font-size:11px; color:var(--text-muted);">T+00:00</span>
+        </div>
+        <div id="map-svg-wrap">
+          <svg id="map-svg" viewBox="0 0 1000 1000" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <div class="panel-heading"><span>Legend</span></div>
+          <div class="legend-row"><span class="legend-dot" style="background:#38bdf8;"></span> India outline</div>
+          <div class="legend-row"><span class="legend-dot" style="background:#f59e0b;"></span> DRDO laboratory</div>
+          <div class="legend-row"><span class="legend-dot" style="background:#10b981;"></span> Ground control station (sim)</div>
+          <div class="legend-row"><span class="legend-dot" style="background:#58a6ff;"></span> Trajectory waypoint</div>
+          <div class="legend-row"><span class="legend-dot" style="background:#f85149;"></span> Threat encounter zone</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading"><span>Threat Scenario</span></div>
+          <p style="font-size:10px; color:var(--text-muted); margin:0 0 10px 0; line-height:1.5;">
+            Threats to the aircraft's own systems (sensor / thermal / mechanical) — each is a real
+            fault-injection already used in the Live Ops Console, not a scripted fake.
+          </p>
+          <div id="attack-type-list" style="display:flex; flex-direction:column; gap:6px;"></div>
+          <button class="btn" id="btn-clear-attack" style="width:100%; margin-top:8px;">CLEAR / RETURN TO NOMINAL</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading">
+            <span>System Response</span>
+            <span id="resp-ws-status" style="font-size:9px; color:var(--text-muted);">○ connecting…</span>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; font-size:10px;">
+            <div style="color:var(--text-muted);">FAULT ARCHETYPE</div>
+            <div id="resp-fault" style="font-family:var(--font-mono); text-align:right;">—</div>
+            <div style="color:var(--text-muted);">ACTION MODE</div>
+            <div id="resp-action-mode" style="font-family:var(--font-mono); text-align:right;">—</div>
+            <div style="color:var(--text-muted);">ENSEMBLE AGREEMENT</div>
+            <div id="resp-agreement" style="font-family:var(--font-mono); text-align:right;">—</div>
+            <div style="color:var(--text-muted);">TREND / PHM RISK</div>
+            <div id="resp-trend" style="font-family:var(--font-mono); text-align:right;">—</div>
+          </div>
+          <div id="resp-narrative" style="font-size:10.5px; color:var(--text-secondary); margin-top:10px; line-height:1.5;">
+            Select a threat to see PRAHARI detect and mitigate it live.
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-heading"><span>Selected</span></div>
+          <div class="detail-card" id="detail-card">
+            <span class="dc-empty">Click a station or waypoint on the map for details.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-heading">
+        <span>3D Flight Profile</span>
+        <span>
+          <button class="btn" id="btn-view-profile" style="padding:6px 12px; font-size:10.5px;">FLIGHT PROFILE</button>
+          <button class="btn" id="btn-view-globe" style="padding:6px 12px; font-size:10.5px;">REGIONAL GLOBE</button>
+        </span>
+      </div>
+      <div id="flight-profile-3d"></div>
+      <p style="font-size:10px; color:var(--text-muted); margin:8px 0 0 0;">
+        Regional Globe view shows India's approximate position among neighboring countries for geographic
+        context only — no cross-border activity depicted.
+      </p>
+    </div>
+  </main>
+
+  <script src="/static/assets/mission_map_data.js?v=20260915_05"></script>
+  <script src="/static/mission-map.js?v=20260915_05"></script>
+  <script src="/static/mission-map-3d.js?v=20260915_05"></script>
+</body>
+
+</html>
